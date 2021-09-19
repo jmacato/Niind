@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -11,6 +12,8 @@ namespace Niind
 {
     class Program
     {
+        private static readonly ReadOnlyMemory<byte> SuperBlockHeaderBytes = Encoding.ASCII.GetBytes("SFFS").AsMemory();
+
         static void Main(string[] args)
         {
             Console.WriteLine("Loading Files...");
@@ -21,23 +24,18 @@ namespace Niind
 
             var rawKeyFile =
                 File.ReadAllBytes("/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-04z02504.bin");
+            
             Console.WriteLine("Key File Loaded.");
 
-            NandDump nandData;
-            KeyFile keyFileData;
-
-            unsafe
-            {
-                fixed (void* x = &rawFullDump[0])
-                    nandData = Marshal.PtrToStructure<NandDump>(new IntPtr(x));
-
-                Console.WriteLine("NAND Dump marshalled to C# structs.");
-
-                fixed (void* x = &rawKeyFile[0])
-                    keyFileData = Marshal.PtrToStructure<KeyFile>(new IntPtr(x));
-
-                Console.WriteLine("Key File marshalled to C# structs.");
-            }
+            var weqwe = "10-B1-CA-5D-23-C5-B4-56-CF-C2-37-50-CE-D4-08-C7".Replace("-", "");
+            
+            var nandData = rawFullDump.CastToStruct<NandDump>();
+  
+            Console.WriteLine("NAND Dump marshalled to C# structs.");
+            
+            var keyData = rawKeyFile.CastToStruct<KeyFile>();
+            
+            Console.WriteLine("Key file marshalled to C# structs.");
 
             if (Marshal.SizeOf(nandData) != rawFullDump.LongLength)
             {
@@ -50,7 +48,7 @@ namespace Niind
 
             Console.WriteLine($"BootMii Metadata Header: {bootMiiHeaderText}");
 
-            var consoleId = BitConverter.ToString(keyFileData.ConsoleID).Replace("-", "");
+            var consoleId = BitConverter.ToString(keyData.ConsoleID).Replace("-", "");
 
             if (!bootMiiHeaderText.Contains(consoleId, StringComparison.InvariantCultureIgnoreCase))
             {
@@ -63,16 +61,40 @@ namespace Niind
             var superBlockAbsClusterAddressIncrement = 16u;
             var superBlocks = new List<(uint absoluteCluster, long baseOffset, uint generationNumber)>();
 
-            for (uint i = superBlockBaseAbsClusterAddress; i <= 0x7FFFu; i += superBlockAbsClusterAddressIncrement)
+            for (var i = superBlockBaseAbsClusterAddress; i <= 0x7FFFu; i += superBlockAbsClusterAddressIncrement)
             {
                 var sp = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
-                var f1 = nandData.Blocks[sp.Block].Clusters[sp.Cluster];
-                var header = Encoding.ASCII.GetString(f1.Pages[0].MainData[0..4]);
-                if (header == "SFFS")
+
+                var sbFirstPage = nandData.Blocks[sp.Block].Clusters[sp.Cluster].Pages[0].MainData;
+
+                var sbHeader = sbFirstPage.AsSpan(0, 4);
+
+                var sbGenNumber = BitConverter.ToUInt32(sbFirstPage.AsSpan(5, 4));
+
+                if (sbHeader.SequenceEqual(SuperBlockHeaderBytes.Span))
                 {
-                    var absOffset = NandAddressTranslation.BCPToByte(sp.Block, sp.Cluster, 0);
-                    Console.WriteLine($"Found a superblock at Cluster 0x{i:X} Offset 0x{absOffset:X} ");
-                    superBlocks.Add((i, absOffset));
+                    var absOffset = NandAddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0);
+                    Console.WriteLine(
+                        $"Found a superblock at Cluster 0x{i:X} Offset 0x{absOffset:X} Generation Number  0x{sbGenNumber:X}");
+                    superBlocks.Add((i, absOffset, sbGenNumber));
+                }
+            }
+
+            var candidateSb = superBlocks
+                .OrderByDescending(x => x.generationNumber)
+                .First();
+
+            Console.WriteLine(
+                $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Generation Number 0x{candidateSb.generationNumber:X}");
+
+            
+            for (uint i = 0x40; i < 0x7EFF; i++)
+            {
+                var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
+                var hzx = Encoding.ASCII.GetString(xc);
+                if (hzx.Contains("ELF"))
+                {
                 }
             }
         }
@@ -86,16 +108,11 @@ namespace Niind
                 return (block, cluster);
             }
 
-            static readonly long NandBlockByteSize = Marshal.SizeOf<NandBlock>();
-            static readonly long NandClusterByteSize = Marshal.SizeOf<NandCluster>();
-            static readonly long NandPageByteSize = Marshal.SizeOf<NandPage>();
-
-            public static long BCPToByte(uint block, uint cluster, uint page)
+            public static long BCPToOffset(uint block, uint cluster, uint page)
             {
-                var b = block * NandBlockByteSize;
-                var c = cluster * NandClusterByteSize;
-                var p = page * NandPageByteSize;
-
+                var b = block * Constants.NandBlockByteSize;
+                var c = cluster * Constants.NandClusterByteSize;
+                var p = page * Constants.NandPageByteSize;
                 return b + c + p;
             }
         }

@@ -90,23 +90,24 @@ namespace Niind
                 $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Generation Number 0x{candidateSb.generationNumber:X}");
 
             
-            // for (uint i = 0x40; i < 0x7EFF; i++)
-            // {
-            //     var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
-            //     var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
-            //     var hzx = Encoding.BigEndianUnicode.GetString(xc);
-            //     if (hzx.Contains("カレンダー"))
-            //     {
-            //     }
-            // }
+            for (uint i = 0x40; i < 0x7EFF; i++)
+            {
+                var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
+                var hzx = Encoding.UTF8.GetString(xc);
+                if (hzx.Contains("JPN"))
+                {
+                }
+            }
             
-            
-            var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(0x40);
-
-            var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
-            var hzx = Encoding.UTF8.GetString(xc);
-
-            var xczxc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].Pages[0].IsECCCorrect();
+            Console.WriteLine("Finished.");
+            //
+            // var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(0x40);
+            //
+            // var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
+            // var hzx = Encoding.UTF8.GetString(xc);
+            //
+            // var xczxc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].Pages[0].IsECCCorrect();
         }
 
         public static class NandAddressTranslation

@@ -26,8 +26,16 @@ namespace Niind.Structures
 
         public bool IsECCCorrect()
         {
+            if (IsECCBlank()) return true; // Ignore if the ECC is blank.
+            
             return SpareData.AsSpan(48, 16)
                 .SequenceEqual(CalculatePageECC());
+        }
+
+        public bool IsECCBlank()
+        {
+            return !SpareData.AsSpan(48, 16)
+                .SequenceEqual(Constants.EmptyECCBytes);
         }
 
         private byte ByteParity(byte x)

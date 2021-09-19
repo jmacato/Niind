@@ -29,7 +29,7 @@ namespace Niind
 
             var weqwe = "10-B1-CA-5D-23-C5-B4-56-CF-C2-37-50-CE-D4-08-C7".Replace("-", "");
             
-            var nandData = rawFullDump.CastToStruct<NandDump>();
+            var nandData = rawFullDump.CastToStruct<NandDumpFile>();
   
             Console.WriteLine("NAND Dump marshalled to C# structs.");
             

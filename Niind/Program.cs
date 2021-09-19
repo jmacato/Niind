@@ -56,12 +56,14 @@ namespace Niind
             }
 
             Console.WriteLine($"Key file matches the NAND dump.");
+            
+            var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint generationNumber)>();
 
-            var superBlockBaseAbsClusterAddress = 0x7F00u;
-            var superBlockAbsClusterAddressIncrement = 16u;
-            var superBlocks = new List<(uint absoluteCluster, long baseOffset, uint generationNumber)>();
-
-            for (var i = superBlockBaseAbsClusterAddress; i <= 0x7FFFu; i += superBlockAbsClusterAddressIncrement)
+            var sbBaseAbsClusterAddress = 0x7F00u;
+            var sbEndAbsClusterAddress = 0x7FFFu;
+            var sbAbsClusterAddressIncrement = 16u;
+            
+            for (var i = sbBaseAbsClusterAddress; i <= sbEndAbsClusterAddress; i += sbAbsClusterAddressIncrement)
             {
                 var sp = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
 
@@ -76,11 +78,11 @@ namespace Niind
                     var absOffset = NandAddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0);
                     Console.WriteLine(
                         $"Found a superblock at Cluster 0x{i:X} Offset 0x{absOffset:X} Generation Number  0x{sbGenNumber:X}");
-                    superBlocks.Add((i, absOffset, sbGenNumber));
+                    foundSuperblocks.Add((i, absOffset, sbGenNumber));
                 }
             }
 
-            var candidateSb = superBlocks
+            var candidateSb = foundSuperblocks
                 .OrderByDescending(x => x.generationNumber)
                 .First();
 
@@ -88,15 +90,23 @@ namespace Niind
                 $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Generation Number 0x{candidateSb.generationNumber:X}");
 
             
-            for (uint i = 0x40; i < 0x7EFF; i++)
-            {
-                var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
-                var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
-                var hzx = Encoding.ASCII.GetString(xc);
-                if (hzx.Contains("ELF"))
-                {
-                }
-            }
+            // for (uint i = 0x40; i < 0x7EFF; i++)
+            // {
+            //     var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+            //     var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
+            //     var hzx = Encoding.BigEndianUnicode.GetString(xc);
+            //     if (hzx.Contains("カレンダー"))
+            //     {
+            //     }
+            // }
+            
+            
+            var xzz = NandAddressTranslation.AbsoluteClusterToBlockCluster(0x40);
+
+            var xc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].DecryptCluster(keyData);
+            var hzx = Encoding.UTF8.GetString(xc);
+
+            var xczxc = nandData.Blocks[xzz.Block].Clusters[xzz.Cluster].Pages[0].IsECCCorrect();
         }
 
         public static class NandAddressTranslation

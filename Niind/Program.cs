@@ -159,23 +159,18 @@ namespace Niind
             sbSalt[0x12] = sbStartAbsClusterBytes[1];
             sbSalt[0x13] = sbStartAbsClusterBytes[0];
 
-
             using var mm2 = new MemoryStream();
 
             var hmac2 = new HMACSHA1(keyData.NandHMACKey);
             var xzx = superBlockBuffer.ToArray();
-
-            File.WriteAllBytes("/Users/jumarmacato/Documents/Development/wiiqt/0x7f80-nospares-niind.bin", xzx);
-
+            
             mm2.Write(sbSalt);
             mm2.Write(xzx);
             mm2.Position = 0;
 
             var dbg2 = ToHex(candidateSuperBlockHMAC.ToArray());
             var dbg4 = ToHex(hmac2.ComputeHash(mm2));
-
-            var dbg5 = Simplehash(xzx, 0x4000);
-
+ 
             mm2.Close();
             mm2.Dispose();
 

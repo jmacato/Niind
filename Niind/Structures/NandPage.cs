@@ -21,13 +21,14 @@ namespace Niind.Structures
                 CalculateBlockECC(MainData.AsSpan(i, 512), ecc.AsSpan(eccCount, 4));
                 eccCount += 4;
             }
+
             return ecc;
         }
 
         public bool IsECCCorrect()
         {
             if (IsECCBlank()) return true; // Ignore if the ECC is blank.
-            
+
             return SpareData.AsSpan(48, 16)
                 .SequenceEqual(CalculatePageECC());
         }
@@ -62,10 +63,7 @@ namespace Niind.Structures
             for (i = 0; i < 512; i++)
             {
                 x = data[i];
-                for (j = 0; j < 9; j++)
-                {
-                    a[3 + j, (i >> j) & 1] ^= x;
-                }
+                for (j = 0; j < 9; j++) a[3 + j, (i >> j) & 1] ^= x;
             }
 
             x = (byte)(a[3, 0] ^ a[3, 1]);
@@ -83,7 +81,7 @@ namespace Niind.Structures
             }
 
             var a0 = a1 = 0;
-            
+
             for (j = 0; j < 12; j++)
             {
                 a0 |= a[j, 0] << j;

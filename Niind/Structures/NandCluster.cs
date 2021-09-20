@@ -19,9 +19,7 @@ namespace Niind.Structures
             var x = buffer.AsSpan();
 
             for (var i = 0; i < Pages.Length; i++)
-            {
                 Pages[i].MainData.AsSpan(0).CopyTo(x.Slice((int)(i * Constants.NandPageNoSpareByteSize)));
-            }
 
             return x;
         }
@@ -29,7 +27,7 @@ namespace Niind.Structures
         public byte[] DecryptCluster(KeyFile keyFile)
         {
             var enc_data = GetRawMainPageData().ToArray();
-            
+
             var aes = new RijndaelManaged
             {
                 Padding = PaddingMode.None,

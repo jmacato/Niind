@@ -66,7 +66,7 @@ namespace Niind
 
                 var sbHeader = sbFirstPage.AsSpan(0, 4);
 
-                var sbGenNumber = SpanToBigEndianUInt(sbFirstPage.AsSpan(5, 4));
+                var sbGenNumber = SpanToBigEndianUInt(sbFirstPage.ToArray().AsSpan(5, 4));
 
                 if (sbHeader.SequenceEqual(SuperBlockHeaderBytes.Span))
                 {

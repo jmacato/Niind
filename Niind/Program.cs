@@ -72,7 +72,7 @@ namespace Niind
 
                 var sbHeader = sbFirstPage.AsSpan(0, 4);
 
-                var sbGenNumber = BitConverter.ToUInt32(sbFirstPage.AsSpan(5, 4));
+                var sbGenNumber = SpanToBigEndianUInt(sbFirstPage.AsSpan(5, 4));
 
                 if (sbHeader.SequenceEqual(SuperBlockHeaderBytes.Span))
                 {
@@ -90,63 +90,87 @@ namespace Niind
             Console.WriteLine(
                 $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Generation Number 0x{candidateSb.generationNumber:X}");
 
+            uint clNo = 0x2ce;
 
-            string ToHex(byte[] inx) => BitConverter.ToString(inx).Replace("-", "");
-            // string ToHex(byte[] inx) => Encoding.UTF8.GetString(inx);
-            
-            // Testing filesystem data cluster HMAC.
-            var clNo = 0x2CEu;
-            
-            var j = AddressTranslation.AbsoluteClusterToBlockCluster(clNo); // Test to see the hmac data they're saying.
-            var x = AddressTranslation.BCPToOffset(j.Block, j.Cluster, 0) == 12131328;
-            var xc = new HMACSHA1(keyData.NandHMACKey);
-            
-            var curcl = nandData.Blocks[j.Block].Clusters[j.Cluster];
-            
-            var mk = ToHex(keyData.NandHMACKey);
+            var addr = AddressTranslation.AbsoluteClusterToBlockCluster(clNo);
+            var cluster = nandData.Blocks[addr.Block].Clusters[addr.Cluster];
 
-            int simplehash(byte[] data, int size)
+            var data = cluster.DecryptCluster(keyData);
+
+            var dataHash = Simplehash(data, data.Length);
+
+            using var xc = new HMACSHA1(keyData.NandHMACKey);
+
+
+            var salt = new byte[0x40]
             {
-                int result = 0x7e7e;
+                0x00, 0x00, 0x10, 0x00, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E,
+                0x67, 0x2E, 0x74, 0x78, 0x74, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                0x00, 0x00, 0x00, 0x00
+            };
 
-                for (int i = 0; i < size; ++i)
+            using (var sds = new SHA1Managed())
+            {
+                var os = Encoding.ASCII.GetBytes("Hello World");
+                var s = ToHex(sds.ComputeHash(os));
+                var ctx = new SHA1.SHA1Context();
+
+                var sx = new SHA1();
+                sx.SHA1Reset(ctx);
+                sx.SHA1Input(ctx, os, os.Length);
+                var h = sx.SHA1Result(ctx);
+
+                var sxx = ToHex(ctx.GetHashBytes());
+
+                if (s != sxx)
                 {
-                    int dax = data[i];
-                    result ^= dax++;
+                    throw new Exception("The universe is broken. SHA1 ported from C didnt match with C#'s");
                 }
-                return result;
             }
 
-            var dec = curcl.DecryptCluster(keyData);
-            var sad = ToHex(dec);
-            var part = sad.Contains("BBA6AC929A04CC77");
-            var adsda = simplehash(dec, 0x4000);
-
-            var a1 = ToHex(curcl.Pages[0].SpareData);
-            var a2 = ToHex(curcl.Pages[1].SpareData);
-            var a3 = ToHex(curcl.Pages[2].SpareData);
-            var a4 = ToHex(curcl.Pages[3].SpareData);
-            var a5 = ToHex(curcl.Pages[4].SpareData);
-            var a6 = ToHex(curcl.Pages[5].SpareData);
-            var a7 = ToHex(curcl.Pages[6].SpareData);
-            var a8 = ToHex(curcl.Pages[7].SpareData);
-
-            var p = curcl.Pages[7].SpareData;
- 
-            var extrasaltstr =
-                "0000100073657474696E672E74787400000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+            var ksd = new HMACSHA1Wii(keyData);
             
-            xc.ComputeHash(StringToByteArray(extrasaltstr));
-            xc.ComputeHash(dec);
+            ksd.hmac_update(salt, salt.Length);
+            ksd.hmac_update(data, data.Length);
+            var hash = ksd.hmac_final();
 
-            var hmc = ToHex(xc.Hash);
 
+            var mm = new MemoryStream();
+            
+            mm.Write(salt);
+            mm.Write(data);
+
+            mm.Position = 0;
+
+            var asd = ToHex(xc.ComputeHash(mm));
+            
+            var x = ToHex(hash);
+
+            var nandClusterHMAC = ToHex(cluster.Pages[6].SpareData[1..21]);
 
             Console.WriteLine("Finished.");
         }
- 
-        
-       static byte[] StringToByteArray(String hex)
+
+        static string ToHex(byte[] inx) => BitConverter.ToString(inx).Replace("-", "");
+
+        static int Simplehash(byte[] data, int size)
+        {
+            int result = 0x7e7e;
+
+            for (int i = 0; i < size; ++i)
+            {
+                int dax = data[i];
+                result ^= dax++;
+            }
+
+            return result;
+        }
+
+        static byte[] StringToByteArray(String hex)
         {
             int NumberChars = hex.Length;
             byte[] bytes = new byte[NumberChars / 2];
@@ -155,7 +179,13 @@ namespace Niind
             return bytes;
         }
 
-        
+        public static uint SpanToBigEndianUInt(Span<byte> input)
+        {
+            input.Reverse();
+            return BitConverter.ToUInt32(input.ToArray(), 0);
+        }
+
+
         public static class AddressTranslation
         {
             public static (uint Block, uint Cluster) AbsoluteClusterToBlockCluster(uint absoluteCluster)

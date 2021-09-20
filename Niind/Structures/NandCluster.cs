@@ -15,7 +15,7 @@ namespace Niind.Structures
 
         public Span<byte> GetRawMainPageData()
         {
-            var buffer = ArrayPool<byte>.Shared.Rent((int)Constants.NandClusterByteSize);
+            var buffer = ArrayPool<byte>.Shared.Rent((int)Constants.NandClusterNoSpareByteSize);
             var x = buffer.AsSpan();
 
             for (var i = 0; i < Pages.Length; i++)

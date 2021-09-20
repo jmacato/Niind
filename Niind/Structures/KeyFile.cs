@@ -17,12 +17,13 @@ namespace Niind.Structures
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x4)]
         public byte[] ConsoleID;
 
-        // EccPrivateKey and NandHMAC overlaps in between by 2 bytes by some stupid reason...
+        // PartialEccPrivateKey and NandHMACKey overlaps in between by 2 bytes by some stupid reason...
+        // So we're cutting it out of PartialEccPrivateKey since we need the NAND HMAC Key more.
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x1C)]
-        public byte[] EccPrivateKey;
+        public byte[] PartialEccPrivateKey;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x14)]
-        public byte[] NandHMAC;
+        public byte[] NandHMACKey;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x10)]
         public byte[] NandAESKey;
@@ -32,5 +33,7 @@ namespace Niind.Structures
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x08)]
         public byte[] UnknownKeyID; 
+        
+        // public byte[] ProperNANDHMacKey { get; } 
     }
 }

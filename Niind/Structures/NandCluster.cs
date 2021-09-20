@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -13,20 +14,15 @@ namespace Niind.Structures
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
         public NandPage[] Pages;
 
-        public Span<byte> GetRawMainPageData()
+        public byte[]  GetRawMainPageData()
         {
-            var buffer = ArrayPool<byte>.Shared.Rent((int)Constants.NandClusterNoSpareByteSize);
-            var x = buffer.AsSpan();
-
-            for (var i = 0; i < Pages.Length; i++)
-                Pages[i].MainData.AsSpan(0).CopyTo(x.Slice((int)(i * Constants.NandPageNoSpareByteSize)));
-
-            return x;
+            // so inefficient but whatever.
+            return Pages.SelectMany(x=>x.MainData).ToArray();
         }
 
         public byte[] DecryptCluster(KeyFile keyFile)
         {
-            var enc_data = GetRawMainPageData().ToArray();
+            var enc_data = GetRawMainPageData();
 
             var aes = new RijndaelManaged
             {
@@ -41,7 +37,7 @@ namespace Niind.Structures
 
             var dec_data = new byte[enc_data.Length];
             _ = cryptoStream.Read(dec_data, 0, dec_data.Length);
-
+            
             return dec_data;
         }
     }

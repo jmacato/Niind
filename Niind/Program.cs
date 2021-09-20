@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -27,7 +28,7 @@ namespace Niind
                 File.ReadAllBytes("/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-04z02504.bin");
 
             Console.WriteLine("Key File Loaded.");
-            
+
             var nandData = rawFullDump.CastToStruct<NandDumpFile>();
 
             Console.WriteLine("NAND Dump marshalled to C# structs.");
@@ -54,11 +55,9 @@ namespace Niind
 
             var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint generationNumber)>();
 
-            var sbBaseAbsClusterAddress = 0x7F00u;
-            var sbEndAbsClusterAddress = 0x7FFFu;
-            var sbAbsClusterAddressIncrement = 16u;
-
-            for (var i = sbBaseAbsClusterAddress; i <= sbEndAbsClusterAddress; i += sbAbsClusterAddressIncrement)
+            for (var i = Constants.SuperblocksBaseCluster;
+                i <= Constants.SuperblocksEndCluster;
+                i += Constants.SuperblocksClusterIncrement)
             {
                 var sp = AddressTranslation.AbsoluteClusterToBlockCluster(i);
 
@@ -84,18 +83,18 @@ namespace Niind
             Console.WriteLine(
                 $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Generation Number 0x{candidateSb.generationNumber:X}");
 
-            uint clNo = 0x2ce;
+            uint clNo = 0x2ce; //Setting.txt Cluster address
 
             var addr = AddressTranslation.AbsoluteClusterToBlockCluster(clNo);
-            
+
             var cluster = nandData.Blocks[addr.Block].Clusters[addr.Cluster];
 
-            var data = cluster.DecryptCluster(keyData);
-            
-            using var xc = new HMACSHA1(keyData.NandHMACKey);
+            var sampleDataClusterMainData = cluster.DecryptCluster(keyData);
+
+            using var hmacsha1 = new HMACSHA1(keyData.NandHMACKey);
 
             // Salts needs to be 0x40 long... this is what tripping up the hmac before :facepalm:
-            var salt = new byte[0x40]
+            var sampleDataClusterSalt = new byte[0x40]
             {
                 0x00, 0x00, 0x10, 0x00, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E,
                 0x67, 0x2E, 0x74, 0x78, 0x74, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -106,12 +105,12 @@ namespace Niind
                 0x00, 0x00, 0x00, 0x00
             };
 
-            using var mm = new MemoryStream();
-            mm.Write(salt);
-            mm.Write(data);
+            var mm = new MemoryStream();
+            mm.Write(sampleDataClusterSalt);
+            mm.Write(sampleDataClusterMainData);
             mm.Position = 0;
 
-            var calculatedHMAC = ToHex(xc.ComputeHash(mm));
+            var calculatedHMAC = ToHex(hmacsha1.ComputeHash(mm));
 
 
             var nandClusterHMAC = ToHex(cluster.Pages[6].SpareData[1..21]);
@@ -119,8 +118,67 @@ namespace Niind
             if (calculatedHMAC == nandClusterHMAC)
             {
                 Console.WriteLine("Cluster 0x2ce HMAC checks out.");
-
             }
+
+            mm.Close();
+            mm.Dispose();
+
+            // verify candidate superblock's HMAC and ECC
+
+            var superBlockBuffer = new MemoryStream();
+            var sbBufCount = 0;
+
+            Span<byte> sbSpare1 = null, sbSpare2 = null;
+
+            for (uint i = candidateSb.absoluteCluster; i <= candidateSb.absoluteCluster + 0x0f; i++)
+            {
+                var addr2 = AddressTranslation.AbsoluteClusterToBlockCluster(i);
+
+                var cluster2 = nandData.Blocks[addr2.Block].Clusters[addr2.Cluster];
+
+                superBlockBuffer.Write(cluster2.GetRawMainPageData());
+
+                if (i != candidateSb.absoluteCluster + 0x0f) continue;
+
+                sbSpare1 = cluster2.Pages[6].SpareData;
+                sbSpare2 = cluster2.Pages[7].SpareData;
+            }
+
+            var dbg0 = ToHex(sbSpare1.ToArray());
+            var dbg1 = ToHex(sbSpare2.ToArray());
+
+            var candidateSuperBlockHMAC = sbSpare1[1..21];
+
+            var sbSalt = new byte[0x40];
+            var sbStartAbsClusterBytes = BitConverter.GetBytes(candidateSb.absoluteCluster);
+
+            sbSalt.AsSpan().Fill(0);
+
+            // this is correct way of generating the sb salt. verified on wiiqt.
+
+            sbSalt[0x12] = sbStartAbsClusterBytes[1];
+            sbSalt[0x13] = sbStartAbsClusterBytes[0];
+
+
+            using var mm2 = new MemoryStream();
+
+            var hmac2 = new HMACSHA1(keyData.NandHMACKey);
+            var xzx = superBlockBuffer.ToArray();
+
+            File.WriteAllBytes("/Users/jumarmacato/Documents/Development/wiiqt/0x7f80-nospares-niind.bin", xzx);
+
+            mm2.Write(sbSalt);
+            mm2.Write(xzx);
+            mm2.Position = 0;
+
+            var dbg2 = ToHex(candidateSuperBlockHMAC.ToArray());
+            var dbg4 = ToHex(hmac2.ComputeHash(mm2));
+
+            var dbg5 = Simplehash(xzx, 0x4000);
+
+            mm2.Close();
+            mm2.Dispose();
+
 
             Console.WriteLine("Finished.");
         }

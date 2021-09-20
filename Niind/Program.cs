@@ -27,9 +27,7 @@ namespace Niind
                 File.ReadAllBytes("/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-04z02504.bin");
 
             Console.WriteLine("Key File Loaded.");
-
-            var weqwe = "10-B1-CA-5D-23-C5-B4-56-CF-C2-37-50-CE-D4-08-C7".Replace("-", "");
-
+            
             var nandData = rawFullDump.CastToStruct<NandDumpFile>();
 
             Console.WriteLine("NAND Dump marshalled to C# structs.");
@@ -113,12 +111,12 @@ namespace Niind
             mm.Write(data);
             mm.Position = 0;
 
-            var asd = ToHex(xc.ComputeHash(mm));
+            var calculatedHMAC = ToHex(xc.ComputeHash(mm));
 
 
             var nandClusterHMAC = ToHex(cluster.Pages[6].SpareData[1..21]);
 
-            if (asd == nandClusterHMAC)
+            if (calculatedHMAC == nandClusterHMAC)
             {
                 Console.WriteLine("Cluster 0x2ce HMAC checks out.");
 

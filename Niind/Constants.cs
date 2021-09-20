@@ -18,8 +18,8 @@ namespace Niind
         public static readonly long NandPageByteSize = Marshal.SizeOf<NandPage>();
         public static readonly long NandPageNoSpareByteSize = Marshal.SizeOf<NandPage>() - 64;
         public static readonly long NandClusterNoSpareByteSize = NandPageNoSpareByteSize * 8;
-        public static readonly uint SuperblocksBaseCluster  = 0x7F00u;
-        public static readonly uint SuperblocksEndCluster  = 0x7FFFu;
-        public static readonly uint SuperblocksClusterIncrement  = 16;
+        public static readonly uint SuperblocksBaseCluster = 0x7F00u;
+        public static readonly uint SuperblocksEndCluster = 0x7FFFu;
+        public static readonly uint SuperblocksClusterIncrement = 16;
     }
 }

@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -51,7 +48,7 @@ namespace Niind
             if (!bootMiiHeaderText.Contains(consoleId, StringComparison.InvariantCultureIgnoreCase))
                 throw new InvalidOperationException("The Key File provided is not for this specific NAND dump.");
 
-            Console.WriteLine($"Key file matches the NAND dump.");
+            Console.WriteLine("Key file matches the NAND dump.");
 
             var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint generationNumber)>();
 
@@ -112,13 +109,9 @@ namespace Niind
 
             var calculatedHMAC = ToHex(hmacsha1.ComputeHash(mm));
 
-
             var nandClusterHMAC = ToHex(cluster.Pages[6].SpareData[1..21]);
 
-            if (calculatedHMAC == nandClusterHMAC)
-            {
-                Console.WriteLine("Cluster 0x2ce HMAC checks out.");
-            }
+            if (calculatedHMAC == nandClusterHMAC) Console.WriteLine("Cluster 0x2ce HMAC checks out.");
 
             mm.Close();
             mm.Dispose();
@@ -130,7 +123,7 @@ namespace Niind
 
             Span<byte> sbSpare1 = null, sbSpare2 = null;
 
-            for (uint i = candidateSb.absoluteCluster; i <= candidateSb.absoluteCluster + 0x0f; i++)
+            for (var i = candidateSb.absoluteCluster; i <= candidateSb.absoluteCluster + 0x0f; i++)
             {
                 var addr2 = AddressTranslation.AbsoluteClusterToBlockCluster(i);
 
@@ -163,14 +156,14 @@ namespace Niind
 
             var hmac2 = new HMACSHA1(keyData.NandHMACKey);
             var xzx = superBlockBuffer.ToArray();
-            
+
             mm2.Write(sbSalt);
             mm2.Write(xzx);
             mm2.Position = 0;
 
             var dbg2 = ToHex(candidateSuperBlockHMAC.ToArray());
             var dbg4 = ToHex(hmac2.ComputeHash(mm2));
- 
+
             mm2.Close();
             mm2.Dispose();
 

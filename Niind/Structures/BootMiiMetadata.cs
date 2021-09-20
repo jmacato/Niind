@@ -12,12 +12,12 @@ namespace Niind.Structures
         public byte[] OTPData;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
-        private byte[] Padding0;
+        private readonly byte[] Padding0;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
         public byte[] SEEPROMData;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-        private byte[] Padding1;
+        private readonly byte[] Padding1;
     }
 }

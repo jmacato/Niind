@@ -281,7 +281,7 @@ namespace Niind
                 }
             }
 
-            Console.WriteLine("Verifying File Clusters...\n");
+            Console.WriteLine("Verifying File Clusters Integrity...");
 
             foreach (var entry in nodes)
             {
@@ -292,12 +292,9 @@ namespace Niind
                 var saltF = new byte[0x40];
 
                 var rawFST = entry.Value.FSTEntry.Source;
-
-                saltF[0x0] = rawFST.UserIDBigEndian[0x0];
-                saltF[0x1] = rawFST.UserIDBigEndian[0x1];
-                saltF[0x2] = rawFST.UserIDBigEndian[0x2];
-                saltF[0x3] = rawFST.UserIDBigEndian[0x3];
-
+                
+                rawFST.UserIDBigEndian.CopyTo(saltF.AsSpan()[..4]);
+                
                 saltF[0x4] = rawFST.FileName[0x0];
                 saltF[0x5] = rawFST.FileName[0x1];
                 saltF[0x6] = rawFST.FileName[0x2];
@@ -310,34 +307,17 @@ namespace Niind
                 saltF[0xD] = rawFST.FileName[0x9];
                 saltF[0xE] = rawFST.FileName[0xA];
                 saltF[0xF] = rawFST.FileName[0xB];
-
-                saltF[0x10] = 0;
-                saltF[0x11] = 0;
-                saltF[0x12] = 0;
-                saltF[0x13] = 0;
-
-                var hxcx = BitConverter.GetBytes(entry.Value.FSTEntryIndex).Reverse().ToArray();
-
-                saltF[0x14] = hxcx[0x0];
-                saltF[0x15] = hxcx[0x1];
-                saltF[0x16] = hxcx[0x2];
-                saltF[0x17] = hxcx[0x3];
-
-                saltF[0x18] = rawFST.X3[0x0];
-                saltF[0x19] = rawFST.X3[0x1];
-                saltF[0x1A] = rawFST.X3[0x2];
-                saltF[0x1B] = rawFST.X3[0x3];
-
-                hmacsha1.Initialize();
+                 
+ 
+                var fstIndex = BitConverter.GetBytes(entry.Value.FSTEntryIndex).Reverse().ToArray();
+                fstIndex.CopyTo(saltF.AsSpan().Slice(0x14, 4));
+                rawFST.X3.CopyTo(saltF.AsSpan().Slice(0x18, 4));
+                
 
                 for (int i = 0x0; i < file.Clusters.Count; i++)
                 {
-                    var hxcxx = BitConverter.GetBytes((uint)i).Reverse().ToArray();
-
-                    saltF[0x10] = hxcxx[0x0];
-                    saltF[0x11] = hxcxx[0x1];
-                    saltF[0x12] = hxcxx[0x2];
-                    saltF[0x13] = hxcxx[0x3];
+                    var clusterIndex1 = BitConverter.GetBytes((uint)i).Reverse().ToArray();
+                    clusterIndex1.CopyTo(saltF.AsSpan().Slice(0x10, 4));
 
                     var dataAdr = AddressTranslation.AbsoluteClusterToBlockCluster(file.Clusters[i]);
                     var rawCluster = nandData.Blocks[dataAdr.Block].Clusters[dataAdr.Cluster];
@@ -360,10 +340,10 @@ namespace Niind
                 }
             }
 
-            Console.WriteLine("File Clusters Verified...");
-            Console.WriteLine("Printing filesystem tree...");
-            var rootNode = nodes[0x0];
-            rootNode.PrintPretty();
+            Console.WriteLine("File Clusters Integrity Verified...");
+            // Console.WriteLine("Printing filesystem tree...");
+            // var rootNode = nodes[0x0];
+            // rootNode.PrintPretty();
             Console.WriteLine("\nFinished.");
         }
 

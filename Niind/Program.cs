@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,18 +12,18 @@ namespace Niind
 {
     internal class Program
     {
-        private static readonly ReadOnlyMemory<byte> SuperBlockHeaderBytes = Encoding.ASCII.GetBytes("SFFS").AsMemory();
-
         private static void Main(string[] args)
         {
             Console.WriteLine("Loading Files...");
 
             var rawFullDump =
-                File.ReadAllBytes("/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/nand-04z02504.bin");
+                File.ReadAllBytes(
+                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb.bin");
             Console.WriteLine("Nand File Loaded.");
 
             var rawKeyFile =
-                File.ReadAllBytes("/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-04z02504.bin");
+                File.ReadAllBytes(
+                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
 
             Console.WriteLine("Key File Loaded.");
 
@@ -50,16 +51,115 @@ namespace Niind
 
             Console.WriteLine("Key file matches the NAND dump.");
 
-            NandFileSystemCheck(nandData, keyData);
+            var distilledNand = NandProcessAndCheck(nandData, keyData);
+
+            Console.WriteLine("Trying to reformat the NAND in memory (no writes to actual NAND).");
+
+            NandReformat(ref nandData, keyData, distilledNand);
+
+            Console.WriteLine("Checking the reformatted NAND.");
+
+            NandProcessAndCheck(nandData, keyData);
+            
+            File.WriteAllBytes("testerasednand.bin", nandData.CastToArray());
         }
 
-        private static void NandFileSystemCheck(NandDumpFile nandData, KeyFile keyData)
+        private static void NandReformat(ref NandDumpFile nandData, KeyFile keyData, DistilledNand distilledNand)
         {
-            var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint version)>();
+            var superBlockRaw = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
 
-            for (var i = Constants.SuperblocksBaseCluster;
-                i <= Constants.SuperblocksEndCluster;
-                i += Constants.SuperblocksClusterIncrement)
+            var validClusters = distilledNand.ValidClusters.Keys;
+
+            // Erase all used clusters.
+            for (ushort i = 0; i < superBlockRaw.ClusterEntries.Length; i++)
+            {
+                if (validClusters.Contains(i))
+                {
+                    Console.Write($"\rDeleting cluster {i} of {validClusters.Count}");
+                    // Mark cluster as free space.
+                    superBlockRaw.ClusterEntries[i] = ByteWiseSwap((ushort)ClusterDescriptor.Empty);
+                    
+                    // Actually delete the data.
+                    var addr = AddressTranslation.AbsoluteClusterToBlockCluster(i);
+                    var target = nandData.Blocks[addr.Block].Clusters[addr.Cluster];
+                    target.EraseData(keyData);
+                }
+            }
+            
+            Console.WriteLine("Cluster deletion complete.");
+            Console.WriteLine("Purging Filesystem Entries except for root.");
+
+            var emptyFST = Constants.EmptyFST.CastToStruct<RawFileSystemTableEntry>();
+
+            for (var i = 1; i < superBlockRaw.RawFileSystemTableEntries.Length; i++)
+            {
+                superBlockRaw.RawFileSystemTableEntries[i] = emptyFST;
+            }
+
+            Console.WriteLine("Capping root FST.");
+            var rootFST = superBlockRaw.RawFileSystemTableEntries[0].SubBigEndian = BitConverter.GetBytes(0xFFFF);
+
+            var xc = superBlockRaw.CastToArray();
+            
+            var sz = xc.Length / Constants.NandClusterNoSpareByteSize;
+
+            for (var i = 0; i < sz; i++)
+            {
+                var addr = AddressTranslation.AbsoluteClusterToBlockCluster(
+                    (uint)(distilledNand.MainSuperBlock.Cluster + i));
+                var chunk = xc.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
+                    (int)Constants.NandClusterNoSpareByteSize);
+
+                nandData.Blocks[addr.Block].Clusters[addr.Cluster].WriteDataNoEncryption(chunk.ToArray());
+            }
+            
+            SuperBlock.RecalculateHMAC(ref xc, ref nandData, keyData, distilledNand.MainSuperBlock.Cluster);
+        }
+
+        public readonly struct DistilledNand
+        {
+            public readonly byte[] MainSuperBlockRaw;
+            public readonly Dictionary<ushort, ushort> ValidClusters;
+            public readonly List<SuperBlockDescriptor> SuperBlockDescriptors;
+            public readonly SuperBlockDescriptor MainSuperBlock;
+            public readonly FileSystemNode RootNode;
+
+            public DistilledNand(List<SuperBlockDescriptor> foundSuperblocks,
+                SuperBlockDescriptor mainSuperBlock,
+                byte[] mainSuperBlockRaw,
+                FileSystemNode rootNode,
+                Dictionary<ushort, ushort> validClusters)
+            {
+                MainSuperBlockRaw = mainSuperBlockRaw;
+                ValidClusters = validClusters;
+                SuperBlockDescriptors = foundSuperblocks;
+                MainSuperBlock = mainSuperBlock;
+                RootNode = rootNode;
+            }
+        }
+
+
+        public readonly struct SuperBlockDescriptor
+        {
+            public readonly ushort Cluster;
+            public readonly long Offset;
+            public readonly uint Version;
+
+            public SuperBlockDescriptor(ushort cluster, long offset, uint version)
+            {
+                Cluster = cluster;
+                Offset = offset;
+                Version = version;
+            }
+        }
+
+        private static DistilledNand NandProcessAndCheck(NandDumpFile nandData, KeyFile keyData)
+        {
+            var foundSuperblocks = new List<SuperBlockDescriptor>();
+
+            for (ushort i = Constants.SuperBlocksBaseCluster;
+                i <= Constants.SuperBlocksEndCluster;
+                i += Constants.SuperBlocksClusterIncrement)
             {
                 var sp = AddressTranslation.AbsoluteClusterToBlockCluster(i);
 
@@ -69,21 +169,21 @@ namespace Niind
 
                 var sbVersion = SpanToBigEndianUInt(sbFirstPage.ToArray().AsSpan(0x5, 0x4));
 
-                if (sbHeader.SequenceEqual(SuperBlockHeaderBytes.Span))
+                if (sbHeader.SequenceEqual(Constants.SuperBlockHeader))
                 {
-                    var absOffset = AddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0x0);
+                    var byteOffset = AddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0x0);
                     Console.WriteLine(
-                        $"Found a superblock at Cluster 0x{i:X} Offset 0x{absOffset:X} Version {sbVersion}");
-                    foundSuperblocks.Add((i, absOffset, sbVersion));
+                        $"Found a superblock at Cluster 0x{i:X} Offset 0x{byteOffset:X} Version {sbVersion}");
+                    foundSuperblocks.Add(new SuperBlockDescriptor(i, byteOffset, sbVersion));
                 }
             }
 
-            var candidateSb = foundSuperblocks
-                .OrderByDescending(x => x.version)
+            var mainSuperBlock = foundSuperblocks
+                .OrderByDescending(x => x.Version)
                 .First();
 
             Console.WriteLine(
-                $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Version {candidateSb.version}");
+                $"Candidate superblock with highest gen number: Cluster 0x{mainSuperBlock.Cluster:X} Offset 0x{mainSuperBlock.Offset:X} Version {mainSuperBlock.Version}");
 
             using var hmacsha1 = new HMACSHA1(keyData.NandHMACKey);
 
@@ -94,7 +194,7 @@ namespace Niind
 
             Span<byte> sbSpare1 = null, sbSpare2 = null;
 
-            for (var i = candidateSb.absoluteCluster; i <= candidateSb.absoluteCluster + 0xF; i++)
+            for (var i = mainSuperBlock.Cluster; i <= mainSuperBlock.Cluster + 0xF; i++)
             {
                 var addr2 = AddressTranslation.AbsoluteClusterToBlockCluster(i);
 
@@ -102,34 +202,27 @@ namespace Niind
 
                 superBlockBuffer.Write(cluster2.GetRawMainPageData());
 
-                if (i != candidateSb.absoluteCluster + 0xF) continue;
+                if (i != mainSuperBlock.Cluster + 0xF) continue;
 
                 sbSpare1 = cluster2.Pages[0x6].SpareData;
-                sbSpare2 = cluster2.Pages[0x7].SpareData;
             }
-
-            var dbg0 = ToHex(sbSpare1.ToArray());
-            var dbg1 = ToHex(sbSpare2.ToArray());
 
             var candidateSuperBlockHMAC = sbSpare1[0x1..0x15];
 
             var sbSalt = new byte[0x40];
-            var sbStartAbsClusterBytes = BitConverter.GetBytes(candidateSb.absoluteCluster);
 
-            sbSalt.AsSpan().Fill(0x0);
+            var sbStartClusterBytes = BitConverter.GetBytes(mainSuperBlock.Cluster);
 
             // this is correct way of generating the sb salt. verified on wiiqt.
 
-            sbSalt[0x12] = sbStartAbsClusterBytes[0x1];
-            sbSalt[0x13] = sbStartAbsClusterBytes[0x0];
-
-            hmacsha1.Initialize();
+            sbSalt[0x12] = sbStartClusterBytes[0x1];
+            sbSalt[0x13] = sbStartClusterBytes[0x0];
 
             using var mm2 = new MemoryStream();
-            var xzx = superBlockBuffer.ToArray();
+            var mainSuperBlockRaw = superBlockBuffer.ToArray();
 
             mm2.Write(sbSalt);
-            mm2.Write(xzx);
+            mm2.Write(mainSuperBlockRaw);
             mm2.Position = 0x0;
 
             if (candidateSuperBlockHMAC.SequenceEqual(hmacsha1.ComputeHash(mm2)))
@@ -140,7 +233,7 @@ namespace Niind
             mm2.Close();
             mm2.Dispose();
 
-            var readableSuperBlock = xzx.CastToStruct<SuperBlock>();
+            var readableSuperBlock = mainSuperBlockRaw.CastToStruct<SuperBlock>();
             Console.WriteLine("Casting Candidate Superblock to a C# struct.");
 
 
@@ -292,29 +385,14 @@ namespace Niind
                 var saltF = new byte[0x40];
 
                 var rawFST = entry.Value.FSTEntry.Source;
-                
                 rawFST.UserIDBigEndian.CopyTo(saltF.AsSpan()[..4]);
-                
-                saltF[0x4] = rawFST.FileName[0x0];
-                saltF[0x5] = rawFST.FileName[0x1];
-                saltF[0x6] = rawFST.FileName[0x2];
-                saltF[0x7] = rawFST.FileName[0x3];
-                saltF[0x8] = rawFST.FileName[0x4];
-                saltF[0x9] = rawFST.FileName[0x5];
-                saltF[0xA] = rawFST.FileName[0x6];
-                saltF[0xB] = rawFST.FileName[0x7];
-                saltF[0xC] = rawFST.FileName[0x8];
-                saltF[0xD] = rawFST.FileName[0x9];
-                saltF[0xE] = rawFST.FileName[0xA];
-                saltF[0xF] = rawFST.FileName[0xB];
-                 
- 
+                rawFST.FileName.CopyTo(saltF.AsSpan()[0x4..]);
+
                 var fstIndex = BitConverter.GetBytes(entry.Value.FSTEntryIndex).Reverse().ToArray();
                 fstIndex.CopyTo(saltF.AsSpan().Slice(0x14, 4));
                 rawFST.X3.CopyTo(saltF.AsSpan().Slice(0x18, 4));
-                
 
-                for (int i = 0x0; i < file.Clusters.Count; i++)
+                for (var i = 0x0; i < file.Clusters.Count; i++)
                 {
                     var clusterIndex1 = BitConverter.GetBytes((uint)i).Reverse().ToArray();
                     clusterIndex1.CopyTo(saltF.AsSpan().Slice(0x10, 4));
@@ -341,10 +419,13 @@ namespace Niind
             }
 
             Console.WriteLine("File Clusters Integrity Verified...");
-            // Console.WriteLine("Printing filesystem tree...");
-            // var rootNode = nodes[0x0];
-            // rootNode.PrintPretty();
-            Console.WriteLine("\nFinished.");
+
+            var rootNode = nodes.First(x => x.Value.Filename == "/");
+
+            rootNode.Value.PrintPretty();
+
+            return new DistilledNand(foundSuperblocks, mainSuperBlock, mainSuperBlockRaw, rootNode.Value,
+                ValidClusters);
         }
 
 

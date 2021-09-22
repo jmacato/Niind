@@ -12,6 +12,12 @@ namespace Niind.Structures
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x40)]
         public byte[] SpareData;
 
+        public void RecalculateECC()
+        {
+            CalculatePageECC().CopyTo(
+                SpareData.AsSpan(0x30, 0x10));
+        }
+        
         public byte[] CalculatePageECC()
         {
             var ecc = new byte[0x10];

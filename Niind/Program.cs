@@ -50,6 +50,11 @@ namespace Niind
 
             Console.WriteLine("Key file matches the NAND dump.");
 
+            NandFileSystemCheck(nandData, keyData);
+        }
+
+        private static void NandFileSystemCheck(NandDumpFile nandData, KeyFile keyData)
+        {
             var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint version)>();
 
             for (var i = Constants.SuperblocksBaseCluster;
@@ -80,41 +85,7 @@ namespace Niind
             Console.WriteLine(
                 $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Version {candidateSb.version}");
 
-            uint clNo = 0x2CE; //Setting.txt Cluster address
-
-            var addr = AddressTranslation.AbsoluteClusterToBlockCluster(clNo);
-
-            var cluster = nandData.Blocks[addr.Block].Clusters[addr.Cluster];
-
-            var sampleDataClusterMainData = cluster.DecryptCluster(keyData);
-
             using var hmacsha1 = new HMACSHA1(keyData.NandHMACKey);
-
-            // Salts needs to be 0x40 long... this is what tripping up the hmac before :facepalm:
-            var sampleDataClusterSalt = new byte[0x40]
-            {
-                0x0, 0x0, 0x10, 0x0, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E,
-                0x67, 0x2E, 0x74, 0x78, 0x74, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x20, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0
-            };
-
-            var mm = new MemoryStream();
-            mm.Write(sampleDataClusterSalt);
-            mm.Write(sampleDataClusterMainData);
-            mm.Position = 0x0;
-
-            var calculatedHMAC = ToHex(hmacsha1.ComputeHash(mm));
-
-            var nandClusterHMAC = ToHex(cluster.Pages[0x6].SpareData[0x1..0x15]);
-
-            if (calculatedHMAC == nandClusterHMAC) Console.WriteLine("Cluster 0x2ce HMAC checks out.");
-
-            mm.Close();
-            mm.Dispose();
 
             // verify candidate superblock's HMAC and ECC
 
@@ -176,7 +147,7 @@ namespace Niind
             var ValidFSTEntries = new Dictionary<uint, RawFileSystemTableEntry>();
             var ValidClusters = new Dictionary<ushort, ushort>();
 
-            var entryCount = 0u;
+            var entryCount = 0x0u;
             foreach (var entry in readableSuperBlock.RawFileSystemTableEntries.Where(x => !x.IsEmpty))
             {
                 ValidFSTEntries.Add(entryCount, entry);
@@ -185,12 +156,12 @@ namespace Niind
 
             Console.WriteLine($"Found {entryCount} Filesystem Table Entries.");
 
-            var badClusters = 0u;
-            var reservedClusters = 0u;
-            var freeClusters = 0u;
-            var chainLastClusters = 0u;
+            var badClusters = 0x0u;
+            var reservedClusters = 0x0u;
+            var freeClusters = 0x0u;
+            var chainLastClusters = 0x0u;
 
-            ushort clusterIndex = 0;
+            ushort clusterIndex = 0x0;
 
             foreach (var clusterDesc in readableSuperBlock.ClusterEntries.Select(ByteWiseSwap))
             {
@@ -244,7 +215,7 @@ namespace Niind
                 else
                 {
                     var startingCluster = rFST.Sub;
-                    
+
                     var newFile = new FileSystemNode()
                     {
                         IsFile = true,
@@ -253,18 +224,20 @@ namespace Niind
                         FSTEntryIndex = entry.Key,
                     };
 
+                    newFile.Clusters.Add(startingCluster);
+
                     var nextCluster = startingCluster;
 
-                    var estimatedClusterCount = (rFST.FileSize / Constants.NandClusterNoSpareByteSize) + 1;
+                    var estimatedClusterCount = (rFST.FileSize / Constants.NandClusterNoSpareByteSize) + 0x1;
 
-                    var watchdogCounter = 0;
+                    var watchdogCounter = 0x0;
 
                     while (watchdogCounter < estimatedClusterCount)
                     {
-                        if ((ClusterDescriptor)nextCluster == ClusterDescriptor.ChainLast)
-                            break;
-
                         var curCluster = ValidClusters[nextCluster];
+
+                        if ((ClusterDescriptor)curCluster == ClusterDescriptor.ChainLast)
+                            break;
 
                         newFile.Clusters.Add(curCluster);
 
@@ -293,7 +266,7 @@ namespace Niind
 
                 dirNode.Children.Add(nodes[sub]);
 
-                var sib = dirNode.Children[0].FSTEntry.Sib;
+                var sib = dirNode.Children[0x0].FSTEntry.Sib;
 
                 var currentSib = sib;
 
@@ -301,15 +274,95 @@ namespace Niind
                 {
                     if (currentSib == Constants.FSTSubEndCapValue || !nodes.ContainsKey(currentSib))
                         break;
-                    
+
                     var curSibNode = nodes[currentSib];
                     dirNode.Children.Add(curSibNode);
                     currentSib = curSibNode.FSTEntry.Sib;
                 }
             }
 
-            Console.WriteLine("Printing filesystem tree...\n");
-            var rootNode = nodes[0];
+            Console.WriteLine("Verifying File Clusters...\n");
+
+            foreach (var entry in nodes)
+            {
+                var file = entry.Value;
+
+                if (!file.IsFile) continue;
+
+                var saltF = new byte[0x40];
+
+                var rawFST = entry.Value.FSTEntry.Source;
+
+                saltF[0x0] = rawFST.UserIDBigEndian[0x0];
+                saltF[0x1] = rawFST.UserIDBigEndian[0x1];
+                saltF[0x2] = rawFST.UserIDBigEndian[0x2];
+                saltF[0x3] = rawFST.UserIDBigEndian[0x3];
+
+                saltF[0x4] = rawFST.FileName[0x0];
+                saltF[0x5] = rawFST.FileName[0x1];
+                saltF[0x6] = rawFST.FileName[0x2];
+                saltF[0x7] = rawFST.FileName[0x3];
+                saltF[0x8] = rawFST.FileName[0x4];
+                saltF[0x9] = rawFST.FileName[0x5];
+                saltF[0xA] = rawFST.FileName[0x6];
+                saltF[0xB] = rawFST.FileName[0x7];
+                saltF[0xC] = rawFST.FileName[0x8];
+                saltF[0xD] = rawFST.FileName[0x9];
+                saltF[0xE] = rawFST.FileName[0xA];
+                saltF[0xF] = rawFST.FileName[0xB];
+
+                saltF[0x10] = 0;
+                saltF[0x11] = 0;
+                saltF[0x12] = 0;
+                saltF[0x13] = 0;
+
+                var hxcx = BitConverter.GetBytes(entry.Value.FSTEntryIndex).Reverse().ToArray();
+
+                saltF[0x14] = hxcx[0x0];
+                saltF[0x15] = hxcx[0x1];
+                saltF[0x16] = hxcx[0x2];
+                saltF[0x17] = hxcx[0x3];
+
+                saltF[0x18] = rawFST.X3[0x0];
+                saltF[0x19] = rawFST.X3[0x1];
+                saltF[0x1A] = rawFST.X3[0x2];
+                saltF[0x1B] = rawFST.X3[0x3];
+
+                hmacsha1.Initialize();
+
+                for (int i = 0x0; i < file.Clusters.Count; i++)
+                {
+                    var hxcxx = BitConverter.GetBytes((uint)i).Reverse().ToArray();
+
+                    saltF[0x10] = hxcxx[0x0];
+                    saltF[0x11] = hxcxx[0x1];
+                    saltF[0x12] = hxcxx[0x2];
+                    saltF[0x13] = hxcxx[0x3];
+
+                    var dataAdr = AddressTranslation.AbsoluteClusterToBlockCluster(file.Clusters[i]);
+                    var rawCluster = nandData.Blocks[dataAdr.Block].Clusters[dataAdr.Cluster];
+                    var decryptedCluster = rawCluster.DecryptCluster(keyData);
+
+                    using var mmx = new MemoryStream();
+                    mmx.Write(saltF);
+                    mmx.Write(decryptedCluster);
+                    mmx.Position = 0;
+
+                    var calculatedHMACx = ToHex(hmacsha1.ComputeHash(mmx));
+
+                    var nandClusterHMACx = ToHex(rawCluster.Pages[0x6].SpareData[0x1..0x15]);
+
+                    if (calculatedHMACx != nandClusterHMACx)
+                        Console.WriteLine($"{file.Filename} Cluster {file.Clusters[i]:x4} HMAC verification failed!");
+
+                    if (!rawCluster.CheckECC())
+                        Console.WriteLine($"{file.Filename} Cluster {file.Clusters[i]:x4} ECC verification failed!");
+                }
+            }
+
+            Console.WriteLine("File Clusters Verified...");
+            Console.WriteLine("Printing filesystem tree...");
+            var rootNode = nodes[0x0];
             rootNode.PrintPretty();
             Console.WriteLine("\nFinished.");
         }
@@ -363,7 +416,7 @@ namespace Niind
             input.Reverse();
             return BitConverter.ToUInt32(input.ToArray(), 0x0);
         }
-        
+
         public static class AddressTranslation
         {
             public static (uint Block, uint Cluster) AbsoluteClusterToBlockCluster(uint absoluteCluster)

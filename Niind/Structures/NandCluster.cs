@@ -37,5 +37,10 @@ namespace Niind.Structures
 
             return dec_data;
         }
+
+        public bool CheckECC()
+        {
+            return Pages.All(page => page.IsECCCorrect());
+        }
     }
 }

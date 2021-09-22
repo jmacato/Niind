@@ -170,17 +170,20 @@ namespace Niind
             mm2.Dispose();
 
             var readableSuperBlock = xzx.CastToStruct<SuperBlock>();
+            Console.WriteLine("Casting Candidate Superblock to a C# struct.");
 
 
-            var ValidFSTEntries = new List<(uint index, RawFileSystemTableEntry entry, bool processed)>();
+            var ValidFSTEntries = new Dictionary<uint, RawFileSystemTableEntry>();
             var ValidClusters = new Dictionary<ushort, ushort>();
 
             var entryCount = 0u;
-            foreach (var entry in readableSuperBlock.RawFileSystemTableEntries.Where(x=>!x.IsEmpty))
+            foreach (var entry in readableSuperBlock.RawFileSystemTableEntries.Where(x => !x.IsEmpty))
             {
-                ValidFSTEntries.Add((entryCount, entry, false));
+                ValidFSTEntries.Add(entryCount, entry);
                 entryCount++;
             }
+
+            Console.WriteLine($"Found {entryCount} Filesystem Table Entries.");
 
             var badClusters = 0u;
             var reservedClusters = 0u;
@@ -191,8 +194,6 @@ namespace Niind
 
             foreach (var clusterDesc in readableSuperBlock.ClusterEntries.Select(ByteWiseSwap))
             {
-                // var x = clusterDesc;
-                // var bddf = ToHex(BitConverter.GetBytes(x));
                 switch ((ClusterDescriptor)clusterDesc)
                 {
                     case ClusterDescriptor.Bad:
@@ -203,7 +204,6 @@ namespace Niind
                         reservedClusters++;
                         clusterIndex++;
                         continue;
-
                     case ClusterDescriptor.Empty:
                         freeClusters++;
                         break;
@@ -212,89 +212,92 @@ namespace Niind
                         break;
                 }
 
-
                 ValidClusters.Add(clusterIndex, clusterDesc);
                 clusterIndex++;
             }
 
+            Console.WriteLine($"Reserved Clusters:  {reservedClusters}");
+            Console.WriteLine($"Bad Clusters:       {badClusters}");
+            Console.WriteLine($"Free Clusters:      {freeClusters}");
+
             var nodes = new Dictionary<uint, FileSystemNode>();
+
+            Console.WriteLine("Connecting File FST's to their clusters.");
 
             // process files first.
             foreach (var entry in ValidFSTEntries)
             {
-                var kz = entry.entry.ToReadableFST();
+                var kz = entry.Value.ToReadableFST();
 
-                if (!kz.IsFile) continue;
-
-                var startingCluster = kz.Sub;
-
-                var x = (int)kz.FileSize;
-
-                var asdx = new FileSystemNode()
+                if (!kz.IsFile)
                 {
-                    IsFile = true,
-                    Filename = kz.FileName,
-                    FSTEntry = kz,
-                    FSTEntryIndex = entry.index,
-                };
-                
-                if (x > 0)
-                {
-                    var FileClusters = new List<ushort> { startingCluster };
-
-                    var nextCluster = startingCluster;
-
-                    var estimatedClusterCount = (kz.FileSize / Constants.NandClusterNoSpareByteSize) + 1;
-
-                    var watchdogCounter = 0;
-
-                    while (watchdogCounter < estimatedClusterCount)
+                    var newDir = new FileSystemNode()
                     {
-                        var curCluster = ValidClusters[nextCluster];
+                        IsFile = false,
+                        Filename = kz.FileName,
+                        FSTEntry = kz,
+                        FSTEntryIndex = entry.Key,
+                    };
 
-                        if ((ClusterDescriptor)curCluster == ClusterDescriptor.ChainLast)
-                            break;
+                    nodes.Add(entry.Key, newDir);
+                }
+                else
+                {
+                    var startingCluster = kz.Sub;
 
-                        FileClusters.Add(curCluster);
+                    var x = (int)kz.FileSize;
 
-                        nextCluster = curCluster;
+                    var newFile = new FileSystemNode()
+                    {
+                        IsFile = true,
+                        Filename = kz.FileName,
+                        FSTEntry = kz,
+                        FSTEntryIndex = entry.Key,
+                    };
 
-                        watchdogCounter++;
+                    if (x > 0)
+                    {
+                        var FileClusters = new List<ushort>();
+
+                        var nextCluster = startingCluster;
+
+                        var estimatedClusterCount = (kz.FileSize / Constants.NandClusterNoSpareByteSize) + 1;
+
+                        var watchdogCounter = 0;
+
+                        while (watchdogCounter < estimatedClusterCount)
+                        {
+                            if ((ClusterDescriptor)nextCluster == ClusterDescriptor.ChainLast)
+                                break;
+
+                            var curCluster = ValidClusters[nextCluster];
+
+                            FileClusters.Add(curCluster);
+
+                            nextCluster = curCluster;
+
+                            watchdogCounter++;
+                        }
+
+                        newFile.Clusters = FileClusters;
                     }
 
-                    asdx.Clusters = FileClusters;
+                    nodes.Add(entry.Key, newFile);
                 }
-                
-                nodes.Add(entry.index, asdx);
             }
 
-            // then add directories first before connecting them.
-            foreach (var entry in ValidFSTEntries)
-            {
-                var kz = entry.entry.ToReadableFST();
-
-                if (kz.IsFile) continue;
-
-                var asdx = new FileSystemNode()
-                {
-                    IsFile = false,
-                    Filename = kz.FileName,
-                    FSTEntry = kz,
-                    FSTEntryIndex = entry.index,
-                };
-
-                nodes.Add(entry.index, asdx);
-            }
-
+            Console.WriteLine("Connecting Directory FST's to their children.");
 
             // then connect directories
             foreach (var entry in nodes)
             {
-                if (entry.Value.IsFile) continue;
-                var dirNode = nodes[entry.Key];
+                var dirNode = entry.Value;
+
+                if (dirNode.IsFile) continue;
+
                 var sub = entry.Value.FSTEntry.Sub;
 
-                if (sub == 0xffff || !nodes.ContainsKey(sub)) break;
+                if (sub == 0xffff || !nodes.ContainsKey(sub)) continue;
 
                 dirNode.Children = new List<FileSystemNode> { nodes[sub] };
                 var sib = dirNode.Children[0].FSTEntry.Sib;
@@ -310,9 +313,10 @@ namespace Niind
                 }
             }
 
+            Console.WriteLine("Printing filesystem tree...\n\n");
             var rootNode = nodes[0];
             rootNode.PrintPretty();
-            Console.WriteLine("Finished.");
+            Console.WriteLine("\n\nFinished.");
         }
 
         public class FileSystemNode
@@ -320,33 +324,20 @@ namespace Niind
             public string Filename;
             public bool IsFile;
             public List<ushort> Clusters;
-            public List<FileSystemNode>? Children;
+            public List<FileSystemNode> Children = new List<FileSystemNode>();
             public ReadableFileSystemTableEntry FSTEntry;
             public uint FSTEntryIndex;
 
             public void PrintPretty(string indent = "  ", bool last = false)
             {
                 Console.Write(indent);
-                if (last)
-                {
-                    Console.Write("\\-");
-                    indent += "  ";
-                }
-                else
-                {
+                 
                     Console.Write("|-");
                     indent += "| ";
-                }
-
-                Console.WriteLine(Filename);
-
-                if (Filename == "ticket")
-                {
-                    
-                }
                 
-                if(Children is null) return;
-                
+
+                Console.WriteLine(Filename+(IsFile ? "" : "/"));
+                 
                 for (int i = 0; i < Children.Count; i++)
                     Children[i].PrintPretty(indent, i == Children.Count - 1);
             }
@@ -361,7 +352,7 @@ namespace Niind
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8000)]
             public ushort[] ClusterEntries;
 
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 9000)] // ? Idk if this is the absolute limit
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6140)] // ? Idk if this is the absolute limit
             public RawFileSystemTableEntry[] RawFileSystemTableEntries;
         }
 

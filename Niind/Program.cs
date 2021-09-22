@@ -38,7 +38,7 @@ namespace Niind
                 throw new FormatException("The NAND dump's internal structure is not correct!" +
                                           " Try to dump your console via BootMii again.");
 
-            var bootMiiHeaderText = Encoding.ASCII.GetString(nandData.BootMiiFooterBlock.HeaderString).Trim((char)0)
+            var bootMiiHeaderText = Encoding.ASCII.GetString(nandData.BootMiiFooterBlock.HeaderString).Trim((char)0x0)
                 .Trim('\n');
 
             Console.WriteLine($"BootMii Metadata Header: {bootMiiHeaderText}");
@@ -50,7 +50,7 @@ namespace Niind
 
             Console.WriteLine("Key file matches the NAND dump.");
 
-            var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint generationNumber)>();
+            var foundSuperblocks = new List<(uint absoluteCluster, long baseOffset, uint version)>();
 
             for (var i = Constants.SuperblocksBaseCluster;
                 i <= Constants.SuperblocksEndCluster;
@@ -58,29 +58,29 @@ namespace Niind
             {
                 var sp = AddressTranslation.AbsoluteClusterToBlockCluster(i);
 
-                var sbFirstPage = nandData.Blocks[sp.Block].Clusters[sp.Cluster].Pages[0].MainData;
+                var sbFirstPage = nandData.Blocks[sp.Block].Clusters[sp.Cluster].Pages[0x0].MainData;
 
-                var sbHeader = sbFirstPage.AsSpan(0, 4);
+                var sbHeader = sbFirstPage.AsSpan(0x0, 0x4);
 
-                var sbGenNumber = SpanToBigEndianUInt(sbFirstPage.ToArray().AsSpan(5, 4));
+                var sbVersion = SpanToBigEndianUInt(sbFirstPage.ToArray().AsSpan(0x5, 0x4));
 
                 if (sbHeader.SequenceEqual(SuperBlockHeaderBytes.Span))
                 {
-                    var absOffset = AddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0);
+                    var absOffset = AddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0x0);
                     Console.WriteLine(
-                        $"Found a superblock at Cluster 0x{i:X} Offset 0x{absOffset:X} Generation Number  0x{sbGenNumber:X}");
-                    foundSuperblocks.Add((i, absOffset, sbGenNumber));
+                        $"Found a superblock at Cluster 0x{i:X} Offset 0x{absOffset:X} Version {sbVersion}");
+                    foundSuperblocks.Add((i, absOffset, sbVersion));
                 }
             }
 
             var candidateSb = foundSuperblocks
-                .OrderByDescending(x => x.generationNumber)
+                .OrderByDescending(x => x.version)
                 .First();
 
             Console.WriteLine(
-                $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Generation Number 0x{candidateSb.generationNumber:X}");
+                $"Candidate superblock with highest gen number: Cluster 0x{candidateSb.absoluteCluster:X} Offset 0x{candidateSb.baseOffset:X} Version {candidateSb.version}");
 
-            uint clNo = 0x2ce; //Setting.txt Cluster address
+            uint clNo = 0x2CE; //Setting.txt Cluster address
 
             var addr = AddressTranslation.AbsoluteClusterToBlockCluster(clNo);
 
@@ -93,23 +93,23 @@ namespace Niind
             // Salts needs to be 0x40 long... this is what tripping up the hmac before :facepalm:
             var sampleDataClusterSalt = new byte[0x40]
             {
-                0x00, 0x00, 0x10, 0x00, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E,
-                0x67, 0x2E, 0x74, 0x78, 0x74, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00
+                0x0, 0x0, 0x10, 0x0, 0x73, 0x65, 0x74, 0x74, 0x69, 0x6E,
+                0x67, 0x2E, 0x74, 0x78, 0x74, 0x0, 0x0, 0x0, 0x0, 0x0,
+                0x0, 0x0, 0x0, 0x20, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+                0x0, 0x0, 0x0, 0x0
             };
 
             var mm = new MemoryStream();
             mm.Write(sampleDataClusterSalt);
             mm.Write(sampleDataClusterMainData);
-            mm.Position = 0;
+            mm.Position = 0x0;
 
             var calculatedHMAC = ToHex(hmacsha1.ComputeHash(mm));
 
-            var nandClusterHMAC = ToHex(cluster.Pages[6].SpareData[1..21]);
+            var nandClusterHMAC = ToHex(cluster.Pages[0x6].SpareData[0x1..0x15]);
 
             if (calculatedHMAC == nandClusterHMAC) Console.WriteLine("Cluster 0x2ce HMAC checks out.");
 
@@ -119,11 +119,11 @@ namespace Niind
             // verify candidate superblock's HMAC and ECC
 
             var superBlockBuffer = new MemoryStream();
-            var sbBufCount = 0;
+            var sbBufCount = 0x0;
 
             Span<byte> sbSpare1 = null, sbSpare2 = null;
 
-            for (var i = candidateSb.absoluteCluster; i <= candidateSb.absoluteCluster + 0x0f; i++)
+            for (var i = candidateSb.absoluteCluster; i <= candidateSb.absoluteCluster + 0xF; i++)
             {
                 var addr2 = AddressTranslation.AbsoluteClusterToBlockCluster(i);
 
@@ -131,45 +131,374 @@ namespace Niind
 
                 superBlockBuffer.Write(cluster2.GetRawMainPageData());
 
-                if (i != candidateSb.absoluteCluster + 0x0f) continue;
+                if (i != candidateSb.absoluteCluster + 0xF) continue;
 
-                sbSpare1 = cluster2.Pages[6].SpareData;
-                sbSpare2 = cluster2.Pages[7].SpareData;
+                sbSpare1 = cluster2.Pages[0x6].SpareData;
+                sbSpare2 = cluster2.Pages[0x7].SpareData;
             }
 
             var dbg0 = ToHex(sbSpare1.ToArray());
             var dbg1 = ToHex(sbSpare2.ToArray());
 
-            var candidateSuperBlockHMAC = sbSpare1[1..21];
+            var candidateSuperBlockHMAC = sbSpare1[0x1..0x15];
 
             var sbSalt = new byte[0x40];
             var sbStartAbsClusterBytes = BitConverter.GetBytes(candidateSb.absoluteCluster);
 
-            sbSalt.AsSpan().Fill(0);
+            sbSalt.AsSpan().Fill(0x0);
 
             // this is correct way of generating the sb salt. verified on wiiqt.
 
-            sbSalt[0x12] = sbStartAbsClusterBytes[1];
-            sbSalt[0x13] = sbStartAbsClusterBytes[0];
+            sbSalt[0x12] = sbStartAbsClusterBytes[0x1];
+            sbSalt[0x13] = sbStartAbsClusterBytes[0x0];
+
+            hmacsha1.Initialize();
 
             using var mm2 = new MemoryStream();
-
-            var hmac2 = new HMACSHA1(keyData.NandHMACKey);
             var xzx = superBlockBuffer.ToArray();
 
             mm2.Write(sbSalt);
             mm2.Write(xzx);
-            mm2.Position = 0;
+            mm2.Position = 0x0;
 
-            var dbg2 = ToHex(candidateSuperBlockHMAC.ToArray());
-            var dbg4 = ToHex(hmac2.ComputeHash(mm2));
+            if (candidateSuperBlockHMAC.SequenceEqual(hmacsha1.ComputeHash(mm2)))
+            {
+                Console.WriteLine("Candidate Superblock has valid HMAC.");
+            }
 
             mm2.Close();
             mm2.Dispose();
 
+            var readableSuperBlock = xzx.CastToStruct<SuperBlock>();
 
+
+            var ValidFSTEntries = new List<(uint index, RawFileSystemTableEntry entry, bool processed)>();
+            var ValidClusters = new Dictionary<ushort, ushort>();
+
+            var entryCount = 0u;
+            foreach (var entry in readableSuperBlock.RawFileSystemTableEntries.Where(x=>!x.IsEmpty))
+            {
+                ValidFSTEntries.Add((entryCount, entry, false));
+                entryCount++;
+            }
+
+            var badClusters = 0u;
+            var reservedClusters = 0u;
+            var freeClusters = 0u;
+            var chainLastClusters = 0u;
+
+            ushort clusterIndex = 0;
+
+            foreach (var clusterDesc in readableSuperBlock.ClusterEntries.Select(ByteWiseSwap))
+            {
+                // var x = clusterDesc;
+                // var bddf = ToHex(BitConverter.GetBytes(x));
+                switch ((ClusterDescriptor)clusterDesc)
+                {
+                    case ClusterDescriptor.Bad:
+                        badClusters++;
+                        clusterIndex++;
+                        continue;
+                    case ClusterDescriptor.Reserved:
+                        reservedClusters++;
+                        clusterIndex++;
+                        continue;
+
+                    case ClusterDescriptor.Empty:
+                        freeClusters++;
+                        break;
+                    case ClusterDescriptor.ChainLast:
+                        chainLastClusters++;
+                        break;
+                }
+
+
+                ValidClusters.Add(clusterIndex, clusterDesc);
+                clusterIndex++;
+            }
+
+            var nodes = new Dictionary<uint, FileSystemNode>();
+
+            // process files first.
+            foreach (var entry in ValidFSTEntries)
+            {
+                var kz = entry.entry.ToReadableFST();
+
+                if (!kz.IsFile) continue;
+
+                var startingCluster = kz.Sub;
+
+                var x = (int)kz.FileSize;
+
+                var asdx = new FileSystemNode()
+                {
+                    IsFile = true,
+                    Filename = kz.FileName,
+                    FSTEntry = kz,
+                    FSTEntryIndex = entry.index,
+                };
+                
+                if (x > 0)
+                {
+                    var FileClusters = new List<ushort> { startingCluster };
+
+                    var nextCluster = startingCluster;
+
+                    var estimatedClusterCount = (kz.FileSize / Constants.NandClusterNoSpareByteSize) + 1;
+
+                    var watchdogCounter = 0;
+
+                    while (watchdogCounter < estimatedClusterCount)
+                    {
+                        var curCluster = ValidClusters[nextCluster];
+
+                        if ((ClusterDescriptor)curCluster == ClusterDescriptor.ChainLast)
+                            break;
+
+                        FileClusters.Add(curCluster);
+
+                        nextCluster = curCluster;
+
+                        watchdogCounter++;
+                    }
+
+                    asdx.Clusters = FileClusters;
+                }
+                
+                nodes.Add(entry.index, asdx);
+            }
+
+            // then add directories first before connecting them.
+            foreach (var entry in ValidFSTEntries)
+            {
+                var kz = entry.entry.ToReadableFST();
+
+                if (kz.IsFile) continue;
+
+                var asdx = new FileSystemNode()
+                {
+                    IsFile = false,
+                    Filename = kz.FileName,
+                    FSTEntry = kz,
+                    FSTEntryIndex = entry.index,
+                };
+
+                nodes.Add(entry.index, asdx);
+            }
+
+
+            // then connect directories
+            foreach (var entry in nodes)
+            {
+                if (entry.Value.IsFile) continue;
+                var dirNode = nodes[entry.Key];
+                var sub = entry.Value.FSTEntry.Sub;
+
+                if (sub == 0xffff || !nodes.ContainsKey(sub)) break;
+
+                dirNode.Children = new List<FileSystemNode> { nodes[sub] };
+                var sib = dirNode.Children[0].FSTEntry.Sib;
+
+                var currentSib = sib;
+
+                while (true)
+                {
+                    if (currentSib == Constants.FSTSubEndCapValue || !nodes.ContainsKey(currentSib)) break;
+                    var curSibNode = nodes[currentSib];
+                    dirNode.Children.Add(curSibNode);
+                    currentSib = curSibNode.FSTEntry.Sib;
+                }
+            }
+
+            var rootNode = nodes[0];
+            rootNode.PrintPretty();
             Console.WriteLine("Finished.");
         }
+
+        public class FileSystemNode
+        {
+            public string Filename;
+            public bool IsFile;
+            public List<ushort> Clusters;
+            public List<FileSystemNode>? Children;
+            public ReadableFileSystemTableEntry FSTEntry;
+            public uint FSTEntryIndex;
+
+            public void PrintPretty(string indent = "  ", bool last = false)
+            {
+                Console.Write(indent);
+                if (last)
+                {
+                    Console.Write("\\-");
+                    indent += "  ";
+                }
+                else
+                {
+                    Console.Write("|-");
+                    indent += "| ";
+                }
+
+                Console.WriteLine(Filename);
+
+                if (Filename == "ticket")
+                {
+                    
+                }
+                
+                if(Children is null) return;
+                
+                for (int i = 0; i < Children.Count; i++)
+                    Children[i].PrintPretty(indent, i == Children.Count - 1);
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SuperBlock
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x3)]
+            public uint[] SuperBlockHeader;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8000)]
+            public ushort[] ClusterEntries;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 9000)] // ? Idk if this is the absolute limit
+            public RawFileSystemTableEntry[] RawFileSystemTableEntries;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RawFileSystemTableEntry
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0xC)]
+            public byte[] FileName;
+
+            public byte AccessMode;
+            public byte Attributes;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+            public byte[] SubBigEndian;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+            public byte[] SibBigEndian;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] FileSizeBigEndian;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] UserIDBigEndian;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
+            public byte[] GroupIDBigEndian;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] X3;
+
+            public bool IsEmpty => this.CastToArray().SequenceEqual(Constants.EmptyFST);
+
+            public ReadableFileSystemTableEntry ToReadableFST()
+            {
+                // Access Mode's bitwise structure
+                // LLMMNNFD
+                // L = Owner Permissions (2 bits)
+                // M = Group Permissions (2 bits)
+                // N = Other Permissions (2 bits)
+                // F = Is a file (1 bit)
+                // D = Is a directory (1 bit)
+
+                var isFile = (AccessMode & 0b0000_0011) == 0b_1;
+                if (isFile)
+                {
+                }
+
+                var isDirectory = (AccessMode & 0b0000_0011) == 0b00000_0010;
+                var OwnerPermissions = (byte)((AccessMode & 0b1100_0000) >> 0b0000_0110);
+                var GroupPermissions = (byte)((AccessMode & 0b0011_0000) >> 0b0000_0100);
+                var OtherPermissions = (byte)((AccessMode & 0b0000_1100) >> 0b0000_0010);
+                var fileName = Encoding.ASCII.GetString(FileName).Trim(char.MinValue);
+                var attributes = Attributes;
+                var sub = UShortToLittleEndian(SubBigEndian);
+                var sib = UShortToLittleEndian(SibBigEndian);
+                var fileSize = UIntBAToLittleEndian(FileSizeBigEndian);
+                var uid = UIntBAToLittleEndian(UserIDBigEndian);
+                var gid = UShortToLittleEndian(GroupIDBigEndian);
+                var x3 = UIntBAToLittleEndian(X3);
+
+                return new ReadableFileSystemTableEntry(isFile, isDirectory, OwnerPermissions,
+                    GroupPermissions, OtherPermissions, fileName, attributes, sub, sib, fileSize, uid, gid, x3);
+            }
+        }
+
+        public static uint UIntBAToLittleEndian(byte[] input) =>
+            BitConverter.ToUInt32(input.ToArray().Reverse().ToArray());
+
+        public static ushort UShortToLittleEndian(byte[] input) =>
+            BitConverter.ToUInt16(input.ToArray().Reverse().ToArray());
+
+        public enum ClusterDescriptor : ushort
+        {
+            // last cluster within a chain
+            ChainLast = 0xFFFB,
+
+            // reserved cluster
+            Reserved = 0xFFFC,
+
+            // bad block (marked at factory)  
+            Bad = 0xFFFD,
+
+            // empty (unused / available) space
+            Empty = 0xFFFE
+        }
+
+        public static ushort ByteWiseSwap(ushort value)
+        {
+            return (ushort)((0x00FF & (value >> 8))
+                            | (0xFF00 & (value << 8)));
+        }
+
+        public static uint ByteWiseSwap(uint value)
+        {
+            uint swapped = (0x000000FF) & (value >> 24)
+                           | (0x0000FF00) & (value >> 8)
+                           | (0x00FF0000) & (value << 8)
+                           | (0xFF000000) & (value << 24);
+            return swapped;
+        }
+
+        public struct ReadableFileSystemTableEntry
+        {
+            public bool IsFile { get; set; }
+            public bool IsDirectory { get; set; }
+            public byte OwnerPermissions { get; set; }
+            public byte GroupPermissions { get; set; }
+            public byte OtherPermissions { get; set; }
+            public string FileName { get; set; }
+            public byte Attributes { get; set; }
+            public ushort Sub { get; set; }
+            public ushort Sib { get; set; }
+            public uint FileSize { get; set; }
+            public uint Uid { get; set; }
+            public ushort Gid { get; set; }
+            public uint X3 { get; set; }
+
+            public ReadableFileSystemTableEntry(bool isFile, bool isDirectory, byte ownerPermissions,
+                byte groupPermissions, byte otherPermissions, string fileName, byte attributes, ushort sub, ushort sib,
+                uint fileSize, uint uid, ushort gid, uint x3)
+            {
+                IsFile = isFile;
+                IsDirectory = isDirectory;
+                OwnerPermissions = ownerPermissions;
+                GroupPermissions = groupPermissions;
+                OtherPermissions = otherPermissions;
+                FileName = fileName;
+                Attributes = attributes;
+                Sub = sub;
+                Sib = sib;
+                FileSize = fileSize;
+                Uid = uid;
+                Gid = gid;
+                X3 = x3;
+            }
+        }
+
 
         private static string ToHex(byte[] inx)
         {
@@ -178,9 +507,9 @@ namespace Niind
 
         private static int Simplehash(byte[] data, int size)
         {
-            var result = 0x7e7e;
+            var result = 0x7E7E;
 
-            for (var i = 0; i < size; ++i)
+            for (var i = 0x0; i < size; ++i)
             {
                 int dax = data[i];
                 result ^= dax++;
@@ -192,16 +521,16 @@ namespace Niind
         private static byte[] StringToByteArray(string hex)
         {
             var NumberChars = hex.Length;
-            var bytes = new byte[NumberChars / 2];
-            for (var i = 0; i < NumberChars; i += 2)
-                bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
+            var bytes = new byte[NumberChars / 0x2];
+            for (var i = 0x0; i < NumberChars; i += 0x2)
+                bytes[i / 0x2] = Convert.ToByte(hex.Substring(i, 0x2), 0x10);
             return bytes;
         }
 
         public static uint SpanToBigEndianUInt(Span<byte> input)
         {
             input.Reverse();
-            return BitConverter.ToUInt32(input.ToArray(), 0);
+            return BitConverter.ToUInt32(input.ToArray(), 0x0);
         }
 
 
@@ -209,8 +538,8 @@ namespace Niind
         {
             public static (uint Block, uint Cluster) AbsoluteClusterToBlockCluster(uint absoluteCluster)
             {
-                var block = (uint)Math.Floor((float)absoluteCluster / 8);
-                var cluster = absoluteCluster % 8;
+                var block = (uint)Math.Floor((float)absoluteCluster / 0x8);
+                var cluster = absoluteCluster % 0x8;
                 return (block, cluster);
             }
 

@@ -31,7 +31,7 @@ namespace Niind.Structures
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x10)]
         public byte[] AES_PRNG_Seed;
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x08)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8)]
         public byte[] UnknownKeyID;
 
         // public byte[] ProperNANDHMacKey { get; } 

@@ -6,20 +6,20 @@ namespace Niind.Structures
     [StructLayout(LayoutKind.Sequential)]
     public struct NandPage
     {
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2048)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x800)]
         public byte[] MainData;
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x40)]
         public byte[] SpareData;
 
         public byte[] CalculatePageECC()
         {
-            var ecc = new byte[16];
-            var eccCount = 0;
-            for (var i = 0; i < 2048; i += 512)
+            var ecc = new byte[0x10];
+            var eccCount = 0x0;
+            for (var i = 0x0; i < 0x800; i += 0x200)
             {
-                CalculateBlockECC(MainData.AsSpan(i, 512), ecc.AsSpan(eccCount, 4));
-                eccCount += 4;
+                CalculateBlockECC(MainData.AsSpan(i, 0x200), ecc.AsSpan(eccCount, 0x4));
+                eccCount += 0x4;
             }
 
             return ecc;
@@ -29,24 +29,24 @@ namespace Niind.Structures
         {
             if (IsECCBlank()) return true; // Ignore if the ECC is blank.
 
-            return SpareData.AsSpan(48, 16)
+            return SpareData.AsSpan(0x30, 0x10)
                 .SequenceEqual(CalculatePageECC());
         }
 
         public bool IsECCBlank()
         {
-            return !SpareData.AsSpan(48, 16)
+            return !SpareData.AsSpan(0x30, 0x10)
                 .SequenceEqual(Constants.EmptyECCBytes);
         }
 
         private byte ByteParity(byte x)
         {
-            byte y = 0;
+            byte y = 0x0;
 
-            while (x > 0)
+            while (x > 0x0)
             {
-                y = (byte)(y ^ (x & 1));
-                x >>= 1;
+                y = (byte)(y ^ (x & 0x1));
+                x >>= 0x1;
             }
 
             return y;
@@ -54,44 +54,44 @@ namespace Niind.Structures
 
         private void CalculateBlockECC(Span<byte> data, Span<byte> ecc)
         {
-            var a = new byte[12, 2];
+            var a = new byte[0xC, 0x2];
 
             int i, j;
             int a1;
             byte x;
 
-            for (i = 0; i < 512; i++)
+            for (i = 0x0; i < 0x200; i++)
             {
                 x = data[i];
-                for (j = 0; j < 9; j++) a[3 + j, (i >> j) & 1] ^= x;
+                for (j = 0x0; j < 0x9; j++) a[0x3 + j, (i >> j) & 0x1] ^= x;
             }
 
-            x = (byte)(a[3, 0] ^ a[3, 1]);
-            a[0, 0] = (byte)(x & 0x55);
-            a[0, 1] = (byte)(x & 0xaa);
-            a[1, 0] = (byte)(x & 0x33);
-            a[1, 1] = (byte)(x & 0xcc);
-            a[2, 0] = (byte)(x & 0x0f);
-            a[2, 1] = (byte)(x & 0xf0);
+            x = (byte)(a[0x3, 0x0] ^ a[0x3, 0x1]);
+            a[0x0, 0x0] = (byte)(x & 0x55);
+            a[0x0, 0x1] = (byte)(x & 0xAA);
+            a[0x1, 0x0] = (byte)(x & 0x33);
+            a[0x1, 0x1] = (byte)(x & 0xCC);
+            a[0x2, 0x0] = (byte)(x & 0xF);
+            a[0x2, 0x1] = (byte)(x & 0xF0);
 
-            for (j = 0; j < 12; j++)
+            for (j = 0x0; j < 0xC; j++)
             {
-                a[j, 0] = ByteParity(a[j, 0]);
-                a[j, 1] = ByteParity(a[j, 1]);
+                a[j, 0x0] = ByteParity(a[j, 0x0]);
+                a[j, 0x1] = ByteParity(a[j, 0x1]);
             }
 
-            var a0 = a1 = 0;
+            var a0 = a1 = 0x0;
 
-            for (j = 0; j < 12; j++)
+            for (j = 0x0; j < 0xC; j++)
             {
-                a0 |= a[j, 0] << j;
-                a1 |= a[j, 1] << j;
+                a0 |= a[j, 0x0] << j;
+                a1 |= a[j, 0x1] << j;
             }
 
-            ecc[0] = (byte)(a0 & 0x00FF);
-            ecc[1] = (byte)(a0 >> 8);
-            ecc[2] = (byte)(a1 & 0x00FF);
-            ecc[3] = (byte)(a1 >> 8);
+            ecc[0x0] = (byte)(a0 & 0xFF);
+            ecc[0x1] = (byte)(a0 >> 0x8);
+            ecc[0x2] = (byte)(a1 & 0xFF);
+            ecc[0x3] = (byte)(a1 >> 0x8);
         }
     }
 }

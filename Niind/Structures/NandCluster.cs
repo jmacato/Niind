@@ -8,7 +8,7 @@ namespace Niind.Structures
     [StructLayout(LayoutKind.Sequential)]
     public struct NandCluster
     {
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8)]
         public NandPage[] Pages;
 
         public byte[] GetRawMainPageData()
@@ -27,13 +27,13 @@ namespace Niind.Structures
                 Mode = CipherMode.CBC
             };
 
-            var decryptor = aes.CreateDecryptor(keyFile.NandAESKey, new byte[16]);
+            var decryptor = aes.CreateDecryptor(keyFile.NandAESKey, new byte[0x10]);
 
             using var memoryStream = new MemoryStream(enc_data);
             using var cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read);
 
             var dec_data = new byte[enc_data.Length];
-            _ = cryptoStream.Read(dec_data, 0, dec_data.Length);
+            _ = cryptoStream.Read(dec_data, 0x0, dec_data.Length);
 
             return dec_data;
         }

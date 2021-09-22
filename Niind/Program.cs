@@ -55,65 +55,77 @@ namespace Niind
 
             Console.WriteLine("Trying to reformat the NAND in memory (no writes to actual NAND).");
 
-            NandReformat(ref nandData, keyData, distilledNand);
+            NandBlankSlate(ref nandData, keyData, distilledNand);
 
             Console.WriteLine("Checking the reformatted NAND.");
 
             NandProcessAndCheck(nandData, keyData);
-            
-            File.WriteAllBytes("testerasednand.bin", nandData.CastToArray());
+
+            File.WriteAllBytes("test1.bin", nandData.CastToArray());
         }
 
-        private static void NandReformat(ref NandDumpFile nandData, KeyFile keyData, DistilledNand distilledNand)
+        private static void NandBlankSlate(ref NandDumpFile nandData, KeyFile keyData, DistilledNand distilledNand)
         {
-            var superBlockRaw = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
+            var superBlockTarget = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
 
             var validClusters = distilledNand.ValidClusters.Keys;
-
+            var clusterDeleted = 0;
             // Erase all used clusters.
-            for (ushort i = 0; i < superBlockRaw.ClusterEntries.Length; i++)
+            for (ushort i = 0; i < superBlockTarget.ClusterEntries.Length; i++)
             {
                 if (validClusters.Contains(i))
                 {
-                    Console.Write($"\rDeleting cluster {i} of {validClusters.Count}");
+                    Console.Write($"\rDeleting cluster {clusterDeleted} of {validClusters.Count}");
                     // Mark cluster as free space.
-                    superBlockRaw.ClusterEntries[i] = ByteWiseSwap((ushort)ClusterDescriptor.Empty);
-                    
+                    superBlockTarget.ClusterEntries[i] = ByteWiseSwap((ushort)ClusterDescriptor.Empty);
+
                     // Actually delete the data.
                     var addr = AddressTranslation.AbsoluteClusterToBlockCluster(i);
                     var target = nandData.Blocks[addr.Block].Clusters[addr.Cluster];
                     target.EraseData(keyData);
+
+                    clusterDeleted++;
                 }
             }
-            
+
             Console.WriteLine("Cluster deletion complete.");
             Console.WriteLine("Purging Filesystem Entries except for root.");
 
             var emptyFST = Constants.EmptyFST.CastToStruct<RawFileSystemTableEntry>();
 
-            for (var i = 1; i < superBlockRaw.RawFileSystemTableEntries.Length; i++)
+            for (var i = 1; i < superBlockTarget.RawFileSystemTableEntries.Length; i++)
             {
-                superBlockRaw.RawFileSystemTableEntries[i] = emptyFST;
+                superBlockTarget.RawFileSystemTableEntries[i] = emptyFST;
             }
 
             Console.WriteLine("Capping root FST.");
-            var rootFST = superBlockRaw.RawFileSystemTableEntries[0].SubBigEndian = BitConverter.GetBytes(0xFFFF);
-
-            var xc = superBlockRaw.CastToArray();
+            var rootFST = superBlockTarget.RawFileSystemTableEntries[0].SubBigEndian = BitConverter.GetBytes(0xFFFF);
+            uint sbVersion = 0;
             
-            var sz = xc.Length / Constants.NandClusterNoSpareByteSize;
-
-            for (var i = 0; i < sz; i++)
+            // Rewrite every single superblocks to erase any trace of the old files.
+            foreach (var desc in distilledNand.SuperBlockDescriptors)
             {
-                var addr = AddressTranslation.AbsoluteClusterToBlockCluster(
-                    (uint)(distilledNand.MainSuperBlock.Cluster + i));
-                var chunk = xc.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
-                    (int)Constants.NandClusterNoSpareByteSize);
+                Console.WriteLine($"Overwriting Superblock at Cluster 0x{desc.Cluster:X} Offset 0x{desc.Offset:X} Version {desc.Version}");
+                Console.WriteLine($"Overwriting Version Number from {desc.Version} to {sbVersion++}");
 
-                nandData.Blocks[addr.Block].Clusters[addr.Cluster].WriteDataNoEncryption(chunk.ToArray());
+                var curCluster = desc.Cluster;
+
+                superBlockTarget.VersionBigEndian = BitConverter.GetBytes(sbVersion).Reverse().ToArray();
+
+                var rawSB = superBlockTarget.CastToArray();
+
+                for (var i = 0; i < Constants.SuperBlocksClusterIncrement; i++)
+                {
+                    var addr = AddressTranslation.AbsoluteClusterToBlockCluster(
+                        (uint)(curCluster + i));
+                    var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
+                        (int)Constants.NandClusterNoSpareByteSize);
+
+                    nandData.Blocks[addr.Block].Clusters[addr.Cluster].WriteDataNoEncryption(chunk.ToArray());
+                }
+
+                SuperBlock.RecalculateHMAC(ref rawSB, ref nandData, keyData, curCluster);
             }
-            
-            SuperBlock.RecalculateHMAC(ref xc, ref nandData, keyData, distilledNand.MainSuperBlock.Cluster);
         }
 
         public readonly struct DistilledNand
@@ -167,7 +179,9 @@ namespace Niind
 
                 var sbHeader = sbFirstPage.AsSpan(0x0, 0x4);
 
-                var sbVersion = SpanToBigEndianUInt(sbFirstPage.ToArray().AsSpan(0x5, 0x4));
+                var sfd = sbFirstPage.AsSpan(0x4, 0x4);
+
+                var sbVersion = BitConverter.ToUInt32(sfd.ToArray().Reverse().ToArray());
 
                 if (sbHeader.SequenceEqual(Constants.SuperBlockHeader))
                 {

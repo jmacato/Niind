@@ -9,9 +9,15 @@ namespace Niind.Structures
     [StructLayout(LayoutKind.Sequential)]
     public struct SuperBlock
     {
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x3)]
-        public uint[] SuperBlockHeader;
-
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x4)]
+        public byte[] SuperBlockHeader;
+            
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x4)]
+        public byte[] VersionBigEndian;
+        
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x4)]
+        public byte[] MagicNumberBigEndian;
+        
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8000)]
         public ushort[] ClusterEntries;
 

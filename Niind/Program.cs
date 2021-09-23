@@ -433,6 +433,7 @@ namespace Niind
                         break;
 
                     var curSibNode = nodes[currentSib];
+                    curSibNode.Parent = curSibNode;
                     dirNode.Children.Add(curSibNode);
                     currentSib = curSibNode.FSTEntry.Sib;
                 }

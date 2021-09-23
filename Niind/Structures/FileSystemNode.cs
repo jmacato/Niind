@@ -14,12 +14,13 @@ namespace Niind.Structures
         public List<FileSystemNode> Children = new();
         public ReadableFileSystemTableEntry FSTEntry;
         public uint FSTEntryIndex;
+        public FileSystemNode Parent;
 
         public byte[] GetFileContents(NandDumpFile nandData, KeyFile keyData)
         {
             if (!IsFile) return Array.Empty<byte>();
             using var mm = new MemoryStream();
-
+            
             foreach (var currentCluster in Clusters)
             {
                 var addr = Program.AddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
@@ -63,26 +64,26 @@ namespace Niind.Structures
             for (uint i = 0; i < Clusters.Count; i++)
             {
                 var currentCluster = Clusters[(int)i];
-                
+
                 var (block, cluster) = Program.AddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
-                
+
                 var chunkLen = (int)Math.Min(Constants.NandClusterNoSpareByteSize, data.LongLength);
-                
+
                 var chunk = data.AsSpan().Slice((int)(i * Constants.NandClusterNoSpareByteSize),
                     chunkLen).ToArray();
-                
-               var targetCluster = nandData.Blocks[block].Clusters[cluster];
-                    
-               targetCluster .WriteDataAsEncrypted(keyData, chunk);
-               
+
+                var targetCluster = nandData.Blocks[block].Clusters[cluster];
+
+                targetCluster.WriteDataAsEncrypted(keyData, chunk);
+
                 //Setting HMAC on this cluster:
                 RecalculateHMAC(keyData, i, targetCluster);
             }
 
             return true;
         }
-        
-        
+
+
         private void RecalculateHMAC(KeyFile keyData, uint clusterIndex, NandCluster targetCluster)
         {
             var saltF = new byte[0x40];
@@ -94,7 +95,7 @@ namespace Niind.Structures
             var fstIndex = BitConverter.GetBytes(FSTEntryIndex).Reverse().ToArray();
             fstIndex.CopyTo(saltF.AsSpan().Slice(0x14, 4));
             rawFST.X3.CopyTo(saltF.AsSpan().Slice(0x18, 4));
-            
+
             var c = BitConverter.GetBytes(clusterIndex).Reverse().ToArray();
             c.CopyTo(saltF.AsSpan().Slice(0x10, 4));
 
@@ -103,16 +104,17 @@ namespace Niind.Structures
             mm.Write(saltF);
             mm.Write(targetCluster.DecryptCluster(keyData));
             mm.Position = 0;
-            
+
             var newHMAC = hmac.ComputeHash(mm);
-            Console.WriteLine($"{Filename} C {clusterIndex} hmac {string.Join("",newHMAC.Select(x=>x.ToString("X2")))}");
+            Console.WriteLine(
+                $"{Filename} C {clusterIndex} hmac {string.Join("", newHMAC.Select(x => x.ToString("X2")))}");
             var sp1 = targetCluster.Pages[0x6].SpareData;
             var sp2 = targetCluster.Pages[0x7].SpareData;
-            
+
             targetCluster.PurgeSpareData();
             newHMAC.CopyTo(sp1.AsSpan()[0x1..0x15]);
             newHMAC.AsSpan()[..0xc].CopyTo(sp1.AsSpan().Slice(0x15, 0xc));
-            newHMAC.AsSpan()[(newHMAC.Length-8)..].CopyTo(sp2.AsSpan()[1..]);
+            newHMAC.AsSpan()[(newHMAC.Length - 8)..].CopyTo(sp2.AsSpan()[1..]);
             targetCluster.RecalculateECC();
         }
     }

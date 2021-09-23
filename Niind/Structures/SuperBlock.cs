@@ -59,15 +59,14 @@ namespace Niind.Structures
             // Complicated way of setting the new HMAC hash
             // based on wii_qt checks.
 
-            targetCluster.Pages[0x6].SpareData.AsSpan().Fill(0);
-            targetCluster.Pages[0x6].SpareData[0] = 0xFF;
-            targetCluster.Pages[0x7].SpareData.AsSpan().Fill(0);
-            targetCluster.Pages[0x7].SpareData[0] = 0xFF;
+            targetCluster.PurgeSpareData();
  
             newHMAC.CopyTo(targetCluster.Pages[0x6].SpareData.AsSpan()[0x1..0x15]);
   
             newHMAC.AsSpan()[..0xc].CopyTo(targetCluster.Pages[0x6].SpareData.AsSpan().Slice(0x15, 0xc));
             newHMAC.AsSpan()[(newHMAC.Length-8)..].CopyTo(targetCluster.Pages[0x7].SpareData.AsSpan()[1..]);
+            
+            targetCluster.RecalculateECC();
         }
     }
 }

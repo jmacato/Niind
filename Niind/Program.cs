@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Niind.Structures;
 
 namespace Niind
@@ -18,12 +20,12 @@ namespace Niind
 
             var rawFullDump =
                 File.ReadAllBytes(
-                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb.bin");
+                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/nand-03z9603 t40415l.bin");
             Console.WriteLine("Nand File Loaded.");
 
             var rawKeyFile =
                 File.ReadAllBytes(
-                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
+                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-03z9603 t40415l.bin");
 
             Console.WriteLine("Key File Loaded.");
 
@@ -52,16 +54,100 @@ namespace Niind
             Console.WriteLine("Key file matches the NAND dump.");
 
             var distilledNand = NandProcessAndCheck(nandData, keyData);
+            
+            
+            
 
+            Console.WriteLine("Getting Manufacturing System Info.");
+
+            var info = GetSystemInfo(nandData, keyData, distilledNand);
+
+            Console.WriteLine($"Serial Number: {info["CODE"]}{info["SERNO"]}");
+            Console.WriteLine($"Region       : {info["AREA"]}");
+
+            //
+            // Console.WriteLine("Trying to set Manufacturing System Info.");
+            //
+            // info["AREA"] = "USA";
+            // info["CODE"] = "NUL";
+            // info["SERNO"] = "13371337";
+            //
+            // SetSystemInfo(nandData, keyData, distilledNand, info);
+            //
+            // Console.WriteLine("Checking the NAND.");
+            //
+            // NandProcessAndCheck(nandData, keyData);
+            //
+            // var infoNew = GetSystemInfo(nandData, keyData, distilledNand);
+            //
+            // Console.WriteLine("New System Info.");
+            //
+            // Console.WriteLine($"Serial Number: {infoNew["CODE"]}{infoNew["SERNO"]}");
+            // Console.WriteLine($"Region       : {infoNew["AREA"]}");
+            //
+            
             Console.WriteLine("Trying to reformat the NAND in memory (no writes to actual NAND).");
-
+            
             NandBlankSlate(ref nandData, keyData, distilledNand);
-
+            
             Console.WriteLine("Checking the reformatted NAND.");
-
+            
             NandProcessAndCheck(nandData, keyData);
 
+
             File.WriteAllBytes("test1.bin", nandData.CastToArray());
+        }
+
+        private static Dictionary<string, string> GetSystemInfo(NandDumpFile nandData, KeyFile keyData,
+            DistilledNand distilledNand)
+        {
+            var xww = distilledNand.RootNode
+                .GetDescendants().FirstOrDefault(x => x.Filename == "setting.txt");
+
+            var encData = xww.GetFileContents(nandData, keyData);
+            SettingTxtCrypt(ref encData);
+
+            var h = Encoding.ASCII.GetString(encData);
+            var match = Regex.Matches(h, @"(?<pair>(?<key>.*?)\=(?<val>.*?))\r\n");
+
+            return match.Select(x => (x.Groups["key"], x.Groups["val"]))
+                .ToDictionary(x => x.Item1.ToString(), x => x.Item2.ToString());
+        }
+
+        
+        private static void SetSystemInfo(NandDumpFile nandData, KeyFile keyData,
+            DistilledNand distilledNand, Dictionary<string, string> setting)
+        {
+            var xww = distilledNand.RootNode
+                .GetDescendants().FirstOrDefault(x => x.Filename == "setting.txt");
+            
+            var k = string.Join("", setting.Select(x => $"{x.Key}={x.Value}\r\n"));
+            var h = Encoding.ASCII.GetBytes(k);
+
+            SettingTxtCrypt(ref h, true);
+
+            if (!xww.ModifyFileContentsNoResize(nandData, keyData, h))
+            {
+                Console.WriteLine("Failed to write setting.txt.");
+            }
+            
+        }
+        
+        static void SettingTxtCrypt(ref byte[] rawtxt, bool is_enc = false)
+        {
+            var buffer = new byte[256];
+            var key = 0x73B5DBFAu;
+            int i, len = 256;
+            
+            rawtxt.CopyTo(buffer, 0);
+            
+            for (i = 0; i < len; i++)
+            {
+                buffer[i] ^= (byte)(key & 0xff);
+                key = (key << 1) | (key >> 31);
+            }
+
+            rawtxt = buffer.ToArray();
         }
 
         private static void NandBlankSlate(ref NandDumpFile nandData, KeyFile keyData, DistilledNand distilledNand)
@@ -101,11 +187,12 @@ namespace Niind
             Console.WriteLine("Capping root FST.");
             var rootFST = superBlockTarget.RawFileSystemTableEntries[0].SubBigEndian = BitConverter.GetBytes(0xFFFF);
             uint sbVersion = 0;
-            
+
             // Rewrite every single superblocks to erase any trace of the old files.
             foreach (var desc in distilledNand.SuperBlockDescriptors)
             {
-                Console.WriteLine($"Overwriting Superblock at Cluster 0x{desc.Cluster:X} Offset 0x{desc.Offset:X} Version {desc.Version}");
+                Console.WriteLine(
+                    $"Overwriting Superblock at Cluster 0x{desc.Cluster:X} Offset 0x{desc.Offset:X} Version {desc.Version}");
                 Console.WriteLine($"Overwriting Version Number from {desc.Version} to {sbVersion++}");
 
                 var curCluster = desc.Cluster;
@@ -125,43 +212,6 @@ namespace Niind
                 }
 
                 SuperBlock.RecalculateHMAC(ref rawSB, ref nandData, keyData, curCluster);
-            }
-        }
-
-        public readonly struct DistilledNand
-        {
-            public readonly byte[] MainSuperBlockRaw;
-            public readonly Dictionary<ushort, ushort> ValidClusters;
-            public readonly List<SuperBlockDescriptor> SuperBlockDescriptors;
-            public readonly SuperBlockDescriptor MainSuperBlock;
-            public readonly FileSystemNode RootNode;
-
-            public DistilledNand(List<SuperBlockDescriptor> foundSuperblocks,
-                SuperBlockDescriptor mainSuperBlock,
-                byte[] mainSuperBlockRaw,
-                FileSystemNode rootNode,
-                Dictionary<ushort, ushort> validClusters)
-            {
-                MainSuperBlockRaw = mainSuperBlockRaw;
-                ValidClusters = validClusters;
-                SuperBlockDescriptors = foundSuperblocks;
-                MainSuperBlock = mainSuperBlock;
-                RootNode = rootNode;
-            }
-        }
-
-
-        public readonly struct SuperBlockDescriptor
-        {
-            public readonly ushort Cluster;
-            public readonly long Offset;
-            public readonly uint Version;
-
-            public SuperBlockDescriptor(ushort cluster, long offset, uint version)
-            {
-                Cluster = cluster;
-                Offset = offset;
-                Version = version;
             }
         }
 
@@ -436,7 +486,7 @@ namespace Niind
 
             var rootNode = nodes.First(x => x.Value.Filename == "/");
 
-            rootNode.Value.PrintPretty();
+            // rootNode.Value.PrintPretty();
 
             return new DistilledNand(foundSuperblocks, mainSuperBlock, mainSuperBlockRaw, rootNode.Value,
                 ValidClusters);

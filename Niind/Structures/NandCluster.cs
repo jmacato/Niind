@@ -42,25 +42,36 @@ namespace Niind.Structures
 
             WriteDataNoEncryption(outdata);
         }
-        
-        public void WriteDataNoEncryption(byte[] rawData, bool deleteHMAC = false)
+
+        public void WriteDataNoEncryption(byte[] rawData )
         {
             for (int i = 0; i < Pages.Length; i++)
             {
-                Pages[i].MainData = 
-                rawData.AsSpan()
-                    .Slice((int)(i*Constants.NandPageNoSpareByteSize), (int)Constants.NandPageNoSpareByteSize).ToArray();
-                
-                if (deleteHMAC)
-                {
-                    Pages[i].SpareData.AsSpan().Fill(0);
-                    Pages[i].SpareData[0] = 0xFF;
-                }
-                
-                Pages[i].RecalculateECC();
+                Pages[i].MainData =
+                    rawData.AsSpan()
+                        .Slice((int)(i * Constants.NandPageNoSpareByteSize), (int)Constants.NandPageNoSpareByteSize)
+                        .ToArray();
             }
         }
 
+        public void PurgeSpareData()
+        {
+            foreach (var page in Pages)
+            {
+                var target = page.SpareData;
+                target .AsSpan().Fill(0);
+                target[0] = 0xFF;
+            } 
+        }
+
+        public void RecalculateECC()
+        {
+            foreach (var page in Pages)
+            {
+                page.RecalculateECC();
+            }
+        }
+        
         public byte[] DecryptCluster(KeyFile keyFile)
         {
             var enc_data = GetRawMainPageData();
@@ -90,6 +101,8 @@ namespace Niind.Structures
         public void EraseData(KeyFile keyFile)
         {
             WriteDataAsEncrypted(keyFile, Constants.EmptyPageRawData);
+            PurgeSpareData();
+            RecalculateECC();
         }
     }
 }

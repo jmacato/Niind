@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -12,10 +13,38 @@ using Niind.Structures;
 
 namespace Niind
 {
+    public class NintendoUpdateServerDownloader
+    {
+        public void GetUpdate()
+        {
+            using var client = new WebClient();
+
+            client.Headers["User-Agent"] = Constants.UpdaterUserAgent;
+
+            foreach (var titles in Constants.Version4_3U_Titles)
+            {
+                var titleID = $"{titles.TicketID:X4}".PadLeft(16, '0');
+                var tmdVersion = $"tmd.{titles.Version}";
+
+                var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
+                var x = client.DownloadData(downloadTmdUri);
+
+                var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
+                var y = client.DownloadData(downloadCetkUri);
+            }
+        }
+    }
+
+
     internal class Program
     {
         private static void Main(string[] args)
         {
+            // var asdasd = new NintendoUpdateServerDownloader();
+            //
+            // asdasd.GetUpdate();
+
+
             Console.WriteLine("Loading Files...");
 
             var rawFullDump =
@@ -54,13 +83,11 @@ namespace Niind
             Console.WriteLine("Key file matches the NAND dump.");
 
             var distilledNand = NandProcessAndCheck(nandData, keyData);
-            
-            
-            
+
 
             Console.WriteLine("Getting Manufacturing System Info.");
 
-            var info = GetSystemInfo(nandData, keyData, distilledNand);
+            var info = GetSystemInfo(distilledNand);
 
             Console.WriteLine($"Serial Number: {info["CODE"]}{info["SERNO"]}");
             Console.WriteLine($"Region       : {info["AREA"]}");
@@ -85,26 +112,40 @@ namespace Niind
             // Console.WriteLine($"Serial Number: {infoNew["CODE"]}{infoNew["SERNO"]}");
             // Console.WriteLine($"Region       : {infoNew["AREA"]}");
             //
-            
+
             Console.WriteLine("Trying to reformat the NAND in memory (no writes to actual NAND).");
-            
+
             NandBlankSlate(ref nandData, keyData, distilledNand);
+
+
+            var currentRoot = new NandRootDir();
+
+            NandNode.CreateDirectory(currentRoot, "/sys");
+            NandNode.CreateDirectory(currentRoot, "/ticket");
+            NandNode.CreateDirectory(currentRoot, "/title", group: NodePerm.Read);
+            NandNode.CreateDirectory(currentRoot, "/shared1");
+            NandNode.CreateDirectory(currentRoot, "/shared2", group: NodePerm.Read);
+            NandNode.CreateDirectory(currentRoot, "/import");
+            NandNode.CreateDirectory(currentRoot, "/meta", 0x1000, 1, group: NodePerm.RW);
+            NandNode.CreateDirectory(currentRoot, "/tmp", group: NodePerm.RW);
+            NandNode.CreateFile(currentRoot, "/tmp/testfile.txt",  Encoding.ASCII.GetBytes("Hello World!").AsMemory(), other: NodePerm.Read);
+            
+            currentRoot.ToConnectedTable(distilledNand);
             
             Console.WriteLine("Checking the reformatted NAND.");
-            
+
             NandProcessAndCheck(nandData, keyData);
 
 
             File.WriteAllBytes("test1.bin", nandData.CastToArray());
         }
 
-        private static Dictionary<string, string> GetSystemInfo(NandDumpFile nandData, KeyFile keyData,
-            DistilledNand distilledNand)
+        private static Dictionary<string, string> GetSystemInfo(DistilledNand distilledNand)
         {
             var xww = distilledNand.RootNode
                 .GetDescendants().FirstOrDefault(x => x.Filename == "setting.txt");
 
-            var encData = xww.GetFileContents(nandData, keyData);
+            var encData = xww.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
             SettingTxtCrypt(ref encData);
 
             var h = Encoding.ASCII.GetString(encData);
@@ -114,13 +155,13 @@ namespace Niind
                 .ToDictionary(x => x.Item1.ToString(), x => x.Item2.ToString());
         }
 
-        
+
         private static void SetSystemInfo(NandDumpFile nandData, KeyFile keyData,
             DistilledNand distilledNand, Dictionary<string, string> setting)
         {
             var xww = distilledNand.RootNode
                 .GetDescendants().FirstOrDefault(x => x.Filename == "setting.txt");
-            
+
             var k = string.Join("", setting.Select(x => $"{x.Key}={x.Value}\r\n"));
             var h = Encoding.ASCII.GetBytes(k);
 
@@ -130,17 +171,16 @@ namespace Niind
             {
                 Console.WriteLine("Failed to write setting.txt.");
             }
-            
         }
-        
+
         static void SettingTxtCrypt(ref byte[] rawtxt, bool is_enc = false)
         {
             var buffer = new byte[256];
             var key = 0x73B5DBFAu;
             int i, len = 256;
-            
+
             rawtxt.CopyTo(buffer, 0);
-            
+
             for (i = 0; i < len; i++)
             {
                 buffer[i] ^= (byte)(key & 0xff);
@@ -165,10 +205,12 @@ namespace Niind
                     // Mark cluster as free space.
                     superBlockTarget.ClusterEntries[i] = ByteWiseSwap((ushort)ClusterDescriptor.Empty);
 
+#if !DEBUG
                     // Actually delete the data.
                     var addr = AddressTranslation.AbsoluteClusterToBlockCluster(i);
                     var target = nandData.Blocks[addr.Block].Clusters[addr.Cluster];
                     target.EraseData(keyData);
+#endif
 
                     clusterDeleted++;
                 }
@@ -348,7 +390,7 @@ namespace Niind
             Console.WriteLine($"Bad Clusters:       {badClusters}");
             Console.WriteLine($"Free Clusters:      {freeClusters}");
 
-            var nodes = new Dictionary<uint, FileSystemNode>();
+            var nodes = new Dictionary<uint, RawFileSystemNode>();
 
             Console.WriteLine("Connecting File FST's to their clusters.");
 
@@ -359,7 +401,7 @@ namespace Niind
 
                 if (!rFST.IsFile)
                 {
-                    var newDir = new FileSystemNode()
+                    var newDir = new RawFileSystemNode()
                     {
                         IsFile = false,
                         Filename = rFST.FileName,
@@ -373,7 +415,7 @@ namespace Niind
                 {
                     var startingCluster = rFST.Sub;
 
-                    var newFile = new FileSystemNode()
+                    var newFile = new RawFileSystemNode()
                     {
                         IsFile = true,
                         Filename = rFST.FileName,
@@ -489,7 +531,8 @@ namespace Niind
 
             // rootNode.Value.PrintPretty();
 
-            return new DistilledNand(foundSuperblocks, mainSuperBlock, mainSuperBlockRaw, rootNode.Value,
+            return new DistilledNand(nandData, keyData, foundSuperblocks, mainSuperBlock, mainSuperBlockRaw,
+                rootNode.Value,
                 ValidClusters);
         }
 

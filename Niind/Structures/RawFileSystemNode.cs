@@ -1,26 +1,27 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 
 namespace Niind.Structures
 {
-    public class FileSystemNode
+    public class RawFileSystemNode
     {
         public string Filename;
         public bool IsFile;
         public List<ushort> Clusters = new();
-        public List<FileSystemNode> Children = new();
+        public List<RawFileSystemNode> Children = new();
         public ReadableFileSystemTableEntry FSTEntry;
         public uint FSTEntryIndex;
-        public FileSystemNode Parent;
+        public RawFileSystemNode Parent;
 
         public byte[] GetFileContents(NandDumpFile nandData, KeyFile keyData)
         {
             if (!IsFile) return Array.Empty<byte>();
             using var mm = new MemoryStream();
-            
+
             foreach (var currentCluster in Clusters)
             {
                 var addr = Program.AddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
@@ -31,7 +32,7 @@ namespace Niind.Structures
             return mm.ToArray().AsSpan(0, (int)FSTEntry.FileSize).ToArray();
         }
 
-        public IEnumerable<FileSystemNode> GetDescendants()
+        public IEnumerable<RawFileSystemNode> GetDescendants()
         {
             foreach (var child in Children)
             {

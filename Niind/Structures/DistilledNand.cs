@@ -8,19 +8,27 @@ namespace Niind.Structures
         public readonly Dictionary<ushort, ushort> ValidClusters;
         public readonly List<SuperBlockDescriptor> SuperBlockDescriptors;
         public readonly SuperBlockDescriptor MainSuperBlock;
-        public readonly FileSystemNode RootNode;
+        public readonly RawFileSystemNode RootNode;
 
-        public DistilledNand(List<SuperBlockDescriptor> foundSuperblocks,
+        public readonly Dictionary<int, ReadableFileSystemTableEntry> FileSystemTable;
+
+        public readonly NandDumpFile NandDumpFile;
+        public readonly KeyFile KeyFile;
+
+        public DistilledNand(NandDumpFile nandDumpFile, KeyFile keyFile, List<SuperBlockDescriptor> foundSuperblocks,
             SuperBlockDescriptor mainSuperBlock,
             byte[] mainSuperBlockRaw,
-            FileSystemNode rootNode,
+            RawFileSystemNode rootNode,
             Dictionary<ushort, ushort> validClusters)
         {
+            NandDumpFile = nandDumpFile;
+            KeyFile = keyFile;
             MainSuperBlockRaw = mainSuperBlockRaw;
             ValidClusters = validClusters;
             SuperBlockDescriptors = foundSuperblocks;
             MainSuperBlock = mainSuperBlock;
             RootNode = rootNode;
+            FileSystemTable = new Dictionary<int, ReadableFileSystemTableEntry>();
         }
     }
 }

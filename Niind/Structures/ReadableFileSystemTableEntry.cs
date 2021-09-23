@@ -14,7 +14,7 @@ namespace Niind.Structures
         public byte OtherPermissions { get; set; }
         public string FileName { get; set; }
 
-        public ushort Sub { get; set; }
+        public ushort Sub { get; set; } 
         public ushort Sib { get; set; }
         public uint FileSize { get; set; }
         public uint UserID { get; set; }

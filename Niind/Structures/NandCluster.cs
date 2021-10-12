@@ -52,6 +52,8 @@ namespace Niind.Structures
                         .Slice((int)(i * Constants.NandPageNoSpareByteSize), (int)Constants.NandPageNoSpareByteSize)
                         .ToArray();
             }
+            
+            RecalculateECC();
         }
 
         public void PurgeSpareData()

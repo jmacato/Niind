@@ -1,16 +1,18 @@
 using System;
+using System.Collections.Generic;
 
 namespace Niind.Structures
 {
-    public class NandFile : NandNode
+    public class NandFileNode : NandNode
     {
-        public NandFile(string name, Memory<byte> data)
+        public NandFileNode(string fileName, Memory<byte> data)
         {
-            FileName = name[..0x0c];
+            FileName = fileName.PadRight(0xc, char.MinValue)[..0x0c].Trim(char.MinValue);
             RawData = data;
         }
 
         public Memory<byte> RawData { get; }
+        public List<ushort> AllocatedClusters { get; set; }
 
         public override ReadableFileSystemTableEntry Materialize()
         {

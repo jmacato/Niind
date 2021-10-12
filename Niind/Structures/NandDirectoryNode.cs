@@ -1,10 +1,10 @@
 namespace Niind.Structures
 {
-    public class NandDirectory : NandNode
+    public class NandDirectoryNode : NandNode
     {
-        public NandDirectory(string fileName)
+        public NandDirectoryNode(string fileName)
         {
-            FileName = fileName;
+            FileName = fileName.PadRight(0xc, char.MinValue)[..0x0c].Trim(char.MinValue);
         }
 
         public override ReadableFileSystemTableEntry Materialize()

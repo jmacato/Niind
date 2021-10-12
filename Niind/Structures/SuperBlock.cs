@@ -21,19 +21,19 @@ namespace Niind.Structures
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8000)]
         public ushort[] ClusterEntries;
 
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6140)] // ? Idk if this is the absolute limit
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6143)] // ? Idk if this is the absolute limit
         public RawFileSystemTableEntry[] RawFileSystemTableEntries;
         
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 116)]
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
         private byte[] Padding;
 
-        public static void RecalculateHMAC(ref byte[] rawSuperBlockData, ref NandDumpFile nandData, KeyFile keyData, ushort cluster)
+        public static void RecalculateHMAC(ref byte[] rawSuperBlockData, NandDumpFile nandData, KeyFile keyData, ushort cluster)
         {
             NandCluster targetCluster = default;
             
             for (var i = cluster; i <= cluster + 0xF; i++)
             {
-                var addr2 = Program.AddressTranslation.AbsoluteClusterToBlockCluster(i);
+                var addr2 = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
                 if (i != cluster + 0xF) continue;
                 targetCluster = nandData.Blocks[addr2.Block].Clusters[addr2.Cluster];
             }

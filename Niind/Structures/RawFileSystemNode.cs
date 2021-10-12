@@ -24,7 +24,7 @@ namespace Niind.Structures
 
             foreach (var currentCluster in Clusters)
             {
-                var addr = Program.AddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
+                var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
                 var targetClusterData = nandData.Blocks[addr.Block].Clusters[addr.Cluster].DecryptCluster(keyData);
                 mm.Write(targetClusterData);
             }
@@ -52,7 +52,12 @@ namespace Niind.Structures
             indent += "| ";
 
 
-            Console.WriteLine(Filename + (IsFile ? "" : "/"));
+            Console.Write(Filename + (IsFile ? "" : "/"));
+            
+            if(IsFile)
+            Console.Write($"\t\t{FSTEntry.FileSize} bytes");
+            
+            Console.WriteLine("");
 
             for (int i = 0; i < Children.Count; i++)
                 Children[i].PrintPretty(indent, i == Children.Count - 1);
@@ -66,7 +71,7 @@ namespace Niind.Structures
             {
                 var currentCluster = Clusters[(int)i];
 
-                var (block, cluster) = Program.AddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
+                var (block, cluster) = NandAddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
 
                 var chunkLen = (int)Math.Min(Constants.NandClusterNoSpareByteSize, data.LongLength);
 

@@ -5,11 +5,15 @@ using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Niind.Generators;
 using Niind.Structures;
 
 namespace Niind
@@ -18,9 +22,47 @@ namespace Niind
     {
         private static void Main(string[] args)
         {
-            // var asdasd = new NintendoUpdateServerDownloader();
-            //
-            // asdasd.GetUpdate();
+            
+            
+            Compilation inputCompilation = CreateCompilation(@"
+namespace MyCode
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+        }
+    }
+
+public partial class Test
+{
+    [AutoNotify]
+    public int _testProp;
+}
+}
+");
+
+            var generator = new  Niind.Generators.AutoNotifyGenerator();
+
+// Create the driver that will control the generation, passing in our generator
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
+
+// Run the generation pass
+            driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
+
+            static Compilation CreateCompilation(string source)
+                => CSharpCompilation.Create("compilation",
+                    new[] { CSharpSyntaxTree.ParseText(source) },
+                    new[] { MetadataReference.CreateFromFile(typeof(Binder).GetTypeInfo().Assembly.Location) },
+                    new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+            
+            
+            
+            
+            
+            var asdasd = new NintendoUpdateServerDownloader();
+            
+            asdasd.GetUpdate();
 
 
             Console.WriteLine("Loading Files...");

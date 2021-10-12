@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace Niind
 {
+    
+     
     public class NintendoUpdateServerDownloader
     {
         public void GetUpdate()
@@ -126,7 +128,7 @@ namespace Niind
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
             public byte[] Unused;
 
-            public IntPtr RawContentData;
+            public IntPtr Contents;
 
             public static RawTitleMetadata FromByteArray(byte[] bytes)
             {

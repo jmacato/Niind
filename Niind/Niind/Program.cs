@@ -22,7 +22,7 @@ namespace Niind
     {
         private static void Main(string[] args)
         {
-            
+            /*
             
             Compilation inputCompilation = CreateCompilation(@"
 namespace MyCode
@@ -41,9 +41,9 @@ public partial class Test
 }
 }
 ");
-
             var generator = new  Niind.Generators.AutoNotifyGenerator();
 
+            
 // Create the driver that will control the generation, passing in our generator
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
 
@@ -57,24 +57,21 @@ public partial class Test
                     new CSharpCompilationOptions(OutputKind.ConsoleApplication));
             
             
+*/
             
             
-            
-            var asdasd = new NintendoUpdateServerDownloader();
-            
-            asdasd.GetUpdate();
 
 
             Console.WriteLine("Loading Files...");
 
             var rawFullDump =
                 File.ReadAllBytes(
-                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb.bin");
+                    "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb copy 2.bin");
             Console.WriteLine("Nand File Loaded.");
 
             var rawKeyFile =
                 File.ReadAllBytes(
-                    "/Users/jumarmacato/Desktop/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
+                    "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
 
             Console.WriteLine("Key File Loaded.");
 
@@ -101,6 +98,15 @@ public partial class Test
                 throw new InvalidOperationException("The Key File provided is not for this specific NAND dump.");
 
             Console.WriteLine("Key file matches the NAND dump.");
+            
+            
+            
+            
+            
+            var asdasd = new NintendoUpdateServerDownloader();
+            
+            asdasd.GetUpdate(keyData);
+            
 
             var distilledNand = NandProcessAndCheck(nandData, keyData);
 

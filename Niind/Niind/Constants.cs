@@ -288,6 +288,7 @@ Installed title 0001000848414b45 v3 to nand
 Received a completed download from NUS
 Installed title 0001000848414c45 v2 to nand
 */
+            (0x100000004ul, 65280), // IOS9
             (0x100000009ul, 0x40A), // IOS9
             (0x10000000Cul, 0x20E), // IOS12
             (0x10000000Dul, 0x408), // IOS13
@@ -311,7 +312,7 @@ Installed title 0001000848414c45 v2 to nand
             (0x10000002Eul, 0xE17), // IOS46
             (0x100000030ul, 0x101C), // IOS48
             (0x100000034ul, 0x1700), // IOS52
-            (0x100000035ul, 0x161F), // IOS53
+            (0x100000035ul, 0x151E), // IOS53 // moded, revert to 161F later
             (0x100000037ul, 0x161F), // IOS55
             (0x100000038ul, 0x161E), // IOS56
             (0x100000039ul, 0x171F), // IOS57

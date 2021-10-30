@@ -5,6 +5,20 @@ using System.Runtime.InteropServices;
 
 namespace Niind
 {
+    public static class EncryptionHelper
+    {
+        public static void PadByteArrayToMultipleOf(ref byte[] src, int pad)
+        {
+            int len = (src.Length + pad - 1) / pad * pad;
+            Array.Resize(ref src, len);
+        }
+
+        public static string ByteArrayToHexString(byte[] inx)
+        {
+            return BitConverter.ToString(inx).Replace("-", "");
+        }
+    }
+
     public static class CastingHelper
     {
         public static T CastToStruct<T>(this byte[] data) where T : struct
@@ -42,6 +56,10 @@ namespace Niind
             BitConverter.GetBytes(input).ToArray().Reverse().ToArray();
 
         public static byte[] LEToBE_UInt32(uint input) =>
+            BitConverter.GetBytes(input).ToArray().Reverse().ToArray();
+        
+        
+        public static byte[] LEToBE_UInt64(ulong input) =>
             BitConverter.GetBytes(input).ToArray().Reverse().ToArray();
     }
 }

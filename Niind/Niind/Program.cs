@@ -15,46 +15,6 @@ namespace Niind
     {
         private static void Main(string[] args)
         {
-            /*
-            
-            Compilation inputCompilation = CreateCompilation(@"
-namespace MyCode
-{
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-        }
-    }
-
-public partial class Test
-{
-    [AutoNotify]
-    public int _testProp;
-}
-}
-");
-            var generator = new  Niind.Generators.AutoNotifyGenerator();
-
-            
-// Create the driver that will control the generation, passing in our generator
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
-
-// Run the generation pass
-            driver.RunGeneratorsAndUpdateCompilation(inputCompilation, out var outputCompilation, out var diagnostics);
-
-            static Compilation CreateCompilation(string source)
-                => CSharpCompilation.Create("compilation",
-                    new[] { CSharpSyntaxTree.ParseText(source) },
-                    new[] { MetadataReference.CreateFromFile(typeof(Binder).GetTypeInfo().Assembly.Location) },
-                    new CSharpCompilationOptions(OutputKind.ConsoleApplication));
-            
-            
-*/
-            
-            
-
-
             Console.WriteLine("Loading Files...");
 
             var rawFullDump =

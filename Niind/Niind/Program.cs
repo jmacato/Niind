@@ -14,7 +14,9 @@ using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Niind.Generators;
+using Niind.Helpers;
 using Niind.Structures;
+using Niind.Structures.FileSystem;
 
 namespace Niind
 {
@@ -242,7 +244,7 @@ public partial class Test
 #if DEBUG
                     
                     // Actually delete the data.
-                    var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
                     var target = distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
                     target.EraseData(distilledNand.KeyFile);
 #endif
@@ -279,7 +281,7 @@ public partial class Test
 
                 for (var i = 0; i < Constants.SuperBlocksClusterIncrement; i++)
                 {
-                    var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(
                         (uint)(curCluster + i));
                     var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
                         (int)Constants.NandClusterNoSpareByteSize);
@@ -300,7 +302,7 @@ public partial class Test
                 i <= Constants.SuperBlocksEndCluster;
                 i += Constants.SuperBlocksClusterIncrement)
             {
-                var sp = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                var sp = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
 
                 var sbFirstPage = nandData.Blocks[sp.Block].Clusters[sp.Cluster].Pages[0x0].MainData;
 
@@ -312,7 +314,7 @@ public partial class Test
 
                 if (sbHeader.SequenceEqual(Constants.SuperBlockHeader))
                 {
-                    var byteOffset = NandAddressTranslation.BCPToOffset(sp.Block, sp.Cluster, 0x0);
+                    var byteOffset = NandAddressTranslationHelper.BCPToOffset(sp.Block, sp.Cluster, 0x0);
                     Console.WriteLine(
                         $"Found a superblock at Cluster 0x{i:X} Offset 0x{byteOffset:X} Version {sbVersion}");
                     foundSuperblocks.Add(new SuperBlockDescriptor(i, byteOffset, sbVersion));
@@ -336,7 +338,7 @@ public partial class Test
 
             for (var i = mainSuperBlock.Cluster; i <= mainSuperBlock.Cluster + 0xF; i++)
             {
-                var addr2 = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                var addr2 = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
 
                 var cluster2 = nandData.Blocks[addr2.Block].Clusters[addr2.Cluster];
 
@@ -541,7 +543,7 @@ public partial class Test
                     var clusterIndex1 = BitConverter.GetBytes((uint)i).Reverse().ToArray();
                     clusterIndex1.CopyTo(saltF.AsSpan().Slice(0x10, 4));
 
-                    var dataAdr = NandAddressTranslation.AbsoluteClusterToBlockCluster(file.Clusters[i]);
+                    var dataAdr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(file.Clusters[i]);
                     var rawCluster = nandData.Blocks[dataAdr.Block].Clusters[dataAdr.Cluster];
                     var decryptedCluster = rawCluster.DecryptCluster(keyData);
 

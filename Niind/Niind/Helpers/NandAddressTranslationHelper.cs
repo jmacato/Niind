@@ -1,8 +1,8 @@
 using System;
 
-namespace Niind
+namespace Niind.Helpers
 {
-    public static class NandAddressTranslation
+    public static class NandAddressTranslationHelper
     {
         public static (uint Block, uint Cluster) AbsoluteClusterToBlockCluster(uint absoluteCluster)
         {

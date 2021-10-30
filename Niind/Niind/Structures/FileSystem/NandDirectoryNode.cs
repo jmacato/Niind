@@ -1,33 +1,25 @@
-using System;
-using System.Collections.Generic;
-
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
-    public class NandFileNode : NandNode
+    public class NandDirectoryNode : NandNode
     {
-        public NandFileNode(string fileName, Memory<byte> data)
+        public NandDirectoryNode(string fileName)
         {
             FileName = fileName.PadRight(0xc, char.MinValue)[..0x0c].Trim(char.MinValue);
-            RawData = data;
         }
-
-        public Memory<byte> RawData { get; }
-        public List<ushort> AllocatedClusters { get; set; }
 
         public override ReadableFileSystemTableEntry Materialize()
         {
             return new ReadableFileSystemTableEntry
             {
                 FileName = FileName,
-                FileSize = (uint)RawData.Length,
                 OwnerPermissions = (byte)Owner,
                 GroupPermissions = (byte)Group,
                 OtherPermissions = (byte)Other,
                 UserID = UserID,
                 GroupID = GroupID,
-                IsDirectory = false,
-                IsFile = true,
-                Sib = SiblingIndex,
+                IsDirectory = true,
+                IsFile = false, 
+                Sib = SiblingIndex, 
                 Sub = SubordinateIndex
             };
         }

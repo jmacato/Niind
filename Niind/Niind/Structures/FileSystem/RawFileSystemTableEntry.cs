@@ -1,9 +1,8 @@
-using System;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
+using Niind.Helpers;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct RawFileSystemTableEntry

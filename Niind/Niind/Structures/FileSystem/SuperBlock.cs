@@ -1,10 +1,10 @@
 using System;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Niind.Helpers;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct SuperBlock
@@ -33,7 +33,7 @@ namespace Niind.Structures
             
             for (var i = cluster; i <= cluster + 0xF; i++)
             {
-                var addr2 = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                var addr2 = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
                 if (i != cluster + 0xF) continue;
                 targetCluster = nandData.Blocks[addr2.Block].Clusters[addr2.Cluster];
             }

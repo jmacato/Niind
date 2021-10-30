@@ -6,7 +6,10 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using Niind.Helpers;
 using Niind.Structures;
+using Niind.Structures.FileSystem;
+using Niind.Structures.TitlesSystem;
 using Aes = System.Runtime.Intrinsics.X86.Aes;
 
 namespace Niind
@@ -23,9 +26,9 @@ namespace Niind
             {
                 var titleID = $"{titles.TicketID:X16}";
                 var tmdVersion = $"tmd.{titles.Version}";
-                
+
                 Console.WriteLine($"Downloading Title Ticket for {titleID}v{titles.Version}");
-                
+
                 var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
                 var rawTicket = client.DownloadData(downloadCetkUri).CastToStruct<RawTicket>();
 
@@ -37,15 +40,15 @@ namespace Niind
                         $"Expected Common Key Index to be 0 for {titleID}v{titles.Version} but got {rawTicket.CommonKeyIndex[0]}. Skipping.");
                     continue;
                 }
-                
+
                 Console.WriteLine("Downloading Title Metadata. ");
-                
+
                 var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
                 var decodedTmd = TitleMetadata.FromByteArray(client.DownloadData(downloadTmdUri));
-                
+
                 var keyIV = (rawTicket.TitleID_KeyIV);
                 EncryptionHelper.PadByteArrayToMultipleOf(ref keyIV, 0x10);
-                
+
                 var shaEngine = SHA1.Create();
                 byte[] decryptedTitleKey;
 
@@ -77,11 +80,12 @@ namespace Niind
 
                 foreach (var contentDescriptor in decodedTmd.ContentDescriptors)
                 {
-                    Console.WriteLine($"Decrypting Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index}");
-                    
+                    Console.WriteLine(
+                        $"Decrypting Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index}");
+
                     var sapd = new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
                     var encryptedContent = client.DownloadData(sapd);
-                    
+
                     EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
                     byte[] decryptedContent;
                     using (var aes = new RijndaelManaged
@@ -109,7 +113,8 @@ namespace Niind
 
                     if (contentDescriptor.SHA1.SequenceEqual(shaEngine.Hash))
                     {
-                        Console.WriteLine("Hash Matched with Title Metadata: " + EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
+                        Console.WriteLine("Hash Matched with Title Metadata: " +
+                                          EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
                         Console.WriteLine($"Decrypted Length: {decryptedContent.Length}");
                         Console.WriteLine($"Length Delta: {decryptedContent.Length - encryptedContent.Length}");
 
@@ -120,291 +125,14 @@ namespace Niind
                     else
                     {
                         Console.WriteLine("Hash did not match! Skipping this title..");
-                        Console.WriteLine("Expected Hash: " + EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
+                        Console.WriteLine("Expected Hash: " +
+                                          EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
                         Console.WriteLine("Got Hash     : " + EncryptionHelper.ByteArrayToHexString(shaEngine.Hash));
                     }
                 }
             }
         }
 
-        public enum SignatureType : uint
-        {
-            RSA_2048 = 0x00010001u,
-            RSA_4096 = 0x00010000u
-        };
+  }
 
-        public struct RawTicket
-        {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x104)]
-            public byte[] SignatureType;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x03C)]
-            public byte[] Padding0;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x040)]
-            public byte[] Issuer;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x03C)]
-            public byte[] ECDHData;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x003)]
-            public byte[] Padding1;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x010)]
-            public byte[] TitleKeyEnc;
-
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x001)]
-            public byte[] unk;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x008)]
-            public byte[] TicketID;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x004)]
-            public byte[] ConsoleID;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x008)]
-            public byte[] TitleID_KeyIV;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x002)]
-            public byte[] Padding2;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x002)]
-            public byte[] TicketTitleVersion;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x004)]
-            public byte[] PermittedTitlesMask;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x008)]
-            public byte[] PermitMask;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x001)]
-            public byte[] IsTitleExportAllowed;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x001)]
-            public byte[] CommonKeyIndex;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x030)]
-            public byte[] Padding3;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x040)]
-            public byte[] ContentAccessPermissions;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x002)]
-            public byte[] Padding4;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x004)]
-            public byte[] EnableTimeLimit;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x004)]
-            public byte[] TimeLimit;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x038)]
-            public byte[] TimeLimitStructs;
-        }
-
-        public struct RawTitleMetadataContentDescriptor : IMaterialize<TitleMetadataContent>
-        {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public byte[] ContentID;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] Index;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] Type;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-            public byte[] Size;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
-            public byte[] SHA1;
-
-            public TitleMetadataContent ToManagedObject()
-            {
-                return new TitleMetadataContent
-                {
-                    ContentID = CastingHelper.BEToLE_UInt32(ContentID),
-                    Index = CastingHelper.BEToLE_UInt16(Index),
-                    Type = CastingHelper.BEToLE_UInt16(Type),
-                    Size = CastingHelper.BEToLE_UInt64(Size),
-                    SHA1 = SHA1
-                };
-            }
-        }
-
-        public struct TitleMetadata
-        {
-            public TitleMetadataHeader Header { get; }
-            public IList<TitleMetadataContent> ContentDescriptors { get; }
-
-            private TitleMetadata(TitleMetadataHeader header,
-                IList<TitleMetadataContent> contentDescriptors)
-            {
-                Header = header;
-                ContentDescriptors = contentDescriptors;
-            }
-
-            public static TitleMetadata FromByteArray(byte[] tmdBytes)
-            {
-                var tmdHeaderSize = Marshal.SizeOf<RawTitleMetadataHeader>();
-
-                var rawHeader = tmdBytes.CastToStruct<RawTitleMetadataHeader>();
-
-                var header = rawHeader.ToManagedObject();
-
-                var contentSpan = tmdBytes[tmdHeaderSize..];
-
-                var nbr = header.NumberOfContents;
-
-                var sz = Marshal.SizeOf<RawTitleMetadataContentDescriptor>();
-
-                var contentDescriptors = new List<TitleMetadataContent>();
-                for (var i = 0; i < nbr * sz; i += sz)
-                {
-                    var contentDescBytes = contentSpan[i..(i + sz)];
-                    var contentDesc = contentDescBytes.CastToStruct<RawTitleMetadataContentDescriptor>()
-                        .ToManagedObject();
-
-                    contentDescriptors.Add(contentDesc);
-                }
-
-                return new TitleMetadata(header, contentDescriptors);
-            }
-        }
-
-
-        public class TitleMetadataContent
-        {
-            public uint ContentID;
-            public ushort Index;
-            public ushort Type;
-            public ulong Size;
-            public byte[] SHA1;
-            public byte[] DecryptedContent;
-            public byte[] DecryptionKey;
-            public byte[] DecryptionIV;
-        }
-
-        public struct TitleMetadataHeader
-        {
-            public SignatureType SignatureType;
-            public byte[] Signature;
-            public byte[] Issuer;
-            public byte Version;
-            public byte ca_crl_version;
-            public byte signer_crl_version;
-            public bool IsVWii;
-            public ulong SystemVersion;
-            public ulong TitleID;
-            public uint TitleType;
-            public ushort GroupID;
-            public ushort Region;
-            public byte[] Ratings;
-            public byte[] IPCMask;
-            public uint AccessRights;
-            public ushort TitleVersion;
-            public ushort NumberOfContents;
-            public ushort BootIndex;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct RawTitleMetadataHeader : IMaterialize<TitleMetadataHeader>
-        {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public byte[] SignatureType;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-            public byte[] Signature;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 60)]
-            public byte[] Padding0;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)]
-            public byte[] Issuer;
-
-            public byte Version;
-
-            public byte ca_crl_version;
-
-            public byte signer_crl_version;
-
-            public byte IsVWii;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-            public byte[] SystemVersion;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-            public byte[] TitleID;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public byte[] TitleType;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] GroupID;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] Zero;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] Region;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-            public byte[] Ratings;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-            public byte[] Padding2;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-            public byte[] IPCMask;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 18)]
-            public byte[] Reserved;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public byte[] AccessRights;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] TitleVersion;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] NumberOfContents;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] BootIndex;
-
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-            public byte[] Unused;
-
-            public TitleMetadataHeader ToManagedObject()
-            {
-                return new TitleMetadataHeader
-                {
-                    SignatureType = (SignatureType)CastingHelper.BEToLE_UInt32(SignatureType),
-                    Signature = Signature,
-                    Issuer = Issuer,
-                    Version = Version,
-                    ca_crl_version = ca_crl_version,
-                    signer_crl_version = signer_crl_version,
-                    IsVWii = IsVWii == 1,
-                    SystemVersion = CastingHelper.BEToLE_UInt64(SystemVersion),
-                    TitleID = CastingHelper.BEToLE_UInt64(TitleID),
-                    TitleType = CastingHelper.BEToLE_UInt32(TitleType),
-                    GroupID = CastingHelper.BEToLE_UInt16(GroupID),
-                    Region = CastingHelper.BEToLE_UInt16(Region),
-                    Ratings = Ratings,
-                    IPCMask = IPCMask,
-                    AccessRights = CastingHelper.BEToLE_UInt32(AccessRights),
-                    TitleVersion = CastingHelper.BEToLE_UInt16(TitleVersion),
-                    NumberOfContents = CastingHelper.BEToLE_UInt16(NumberOfContents),
-                    BootIndex = CastingHelper.BEToLE_UInt16(BootIndex)
-                };
-            }
-        }
-    }
-
-    public interface IMaterialize<out T>
-    {
-        T ToManagedObject();
-    }
 }

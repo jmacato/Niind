@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
-using Microsoft.VisualBasic;
+using Niind.Helpers;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     public sealed class NandRootNode : NandDirectoryNode
     {
@@ -134,7 +133,7 @@ namespace Niind.Structures
 
                     #if DEBUG
                     // Actually delete the data.
-                    var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(i);
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
                     var target = distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
                     target.EraseData(distilledNand.KeyFile);
 #endif
@@ -171,7 +170,7 @@ namespace Niind.Structures
 
                 for (var i = 0; i < Constants.SuperBlocksClusterIncrement; i++)
                 {
-                    var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(
                         (uint)(curCluster + i));
                     var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
                         (int)Constants.NandClusterNoSpareByteSize);
@@ -204,7 +203,7 @@ namespace Niind.Structures
 
                 for (var i = 0; i < Constants.SuperBlocksClusterIncrement; i++)
                 {
-                    var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(
                         (uint)(curCluster + i));
                     var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
                         (int)Constants.NandClusterNoSpareByteSize);

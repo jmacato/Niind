@@ -1,9 +1,7 @@
-using System;
-using System.IO;
-using System.Linq;
 using System.Text;
+using Niind.Helpers;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     public struct ReadableFileSystemTableEntry
     {

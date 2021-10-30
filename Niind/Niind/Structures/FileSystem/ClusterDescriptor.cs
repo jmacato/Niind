@@ -1,4 +1,4 @@
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     public enum ClusterDescriptor : ushort
     {

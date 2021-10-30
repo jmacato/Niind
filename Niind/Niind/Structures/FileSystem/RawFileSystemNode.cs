@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using Niind.Helpers;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     public class RawFileSystemNode
     {
@@ -24,7 +24,7 @@ namespace Niind.Structures
 
             foreach (var currentCluster in Clusters)
             {
-                var addr = NandAddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
+                var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(currentCluster);
                 var targetClusterData = nandData.Blocks[addr.Block].Clusters[addr.Cluster].DecryptCluster(keyData);
                 mm.Write(targetClusterData);
             }
@@ -71,7 +71,7 @@ namespace Niind.Structures
             {
                 var currentCluster = Clusters[(int)i];
 
-                var (block, cluster) = NandAddressTranslation.AbsoluteClusterToBlockCluster(currentCluster);
+                var (block, cluster) = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(currentCluster);
 
                 var chunkLen = (int)Math.Min(Constants.NandClusterNoSpareByteSize, data.LongLength);
 

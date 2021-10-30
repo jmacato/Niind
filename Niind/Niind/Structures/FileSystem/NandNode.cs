@@ -1,8 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     public abstract class NandNode
     {

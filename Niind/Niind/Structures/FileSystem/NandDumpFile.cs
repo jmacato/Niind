@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct NandDumpFile

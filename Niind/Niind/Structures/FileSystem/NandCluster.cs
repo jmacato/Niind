@@ -4,7 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct NandCluster

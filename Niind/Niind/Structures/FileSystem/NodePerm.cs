@@ -1,6 +1,6 @@
 using System;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     [Flags]
     public enum NodePerm : byte

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Niind.Structures
+namespace Niind.Structures.FileSystem
 {
     public readonly struct DistilledNand
     {

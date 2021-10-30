@@ -42,37 +42,20 @@ namespace Niind
                 var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
                 var decodedTmd = TitleMetadata.FromByteArray(client.DownloadData(downloadTmdUri));
 
-                var keyIV = (rawTicket.TitleID_KeyIV);
+                var keyIV = rawTicket.TitleID_KeyIV;
                 EncryptionHelper.PadByteArrayToMultipleOf(ref keyIV, 0x10);
 
-                var shaEngine = SHA1.Create();
-                byte[] decryptedTitleKey;
+                var decryptedTitleKey = EncryptionHelper.AESDecrypt(rawTicket.TitleKeyEnc, keyFile.CommonKey,
+                    rawTicket.TitleKeyEnc.Length, keyIV);
 
-                using (var aes = new RijndaelManaged
-                       {
-                           Padding = PaddingMode.None,
-                           Mode = CipherMode.CBC
-                       })
-                {
-                    var decryptor = aes.CreateDecryptor(keyFile.CommonKey, keyIV);
-                    var encryptedTitleKey = rawTicket.TitleKeyEnc;
-
-                    using var memoryStream = new MemoryStream(encryptedTitleKey);
-                    using var cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read);
-
-                    decryptedTitleKey = new byte[encryptedTitleKey.Length];
-                    _ = cryptoStream.Read(decryptedTitleKey, 0x0, decryptedTitleKey.Length);
-
-
-                    Console.WriteLine(
-                        "Title Key Encrypted: " + EncryptionHelper.ByteArrayToHexString(encryptedTitleKey));
-                    Console.WriteLine(
-                        "Title Key Common Key: " + EncryptionHelper.ByteArrayToHexString(keyFile.CommonKey));
-                    Console.WriteLine(
-                        "Title Key IV: " + EncryptionHelper.ByteArrayToHexString(keyIV));
-                    Console.WriteLine(
-                        "Title Key Decrypted: " + EncryptionHelper.ByteArrayToHexString(decryptedTitleKey));
-                }
+                Console.WriteLine(
+                    "Title Key Encrypted: " + EncryptionHelper.ByteArrayToHexString(rawTicket.TitleKeyEnc));
+                Console.WriteLine(
+                    "Title Key Common Key: " + EncryptionHelper.ByteArrayToHexString(keyFile.CommonKey));
+                Console.WriteLine(
+                    "Title Key IV: " + EncryptionHelper.ByteArrayToHexString(keyIV));
+                Console.WriteLine(
+                    "Title Key Decrypted: " + EncryptionHelper.ByteArrayToHexString(decryptedTitleKey));
 
                 foreach (var contentDescriptor in decodedTmd.ContentDescriptors)
                 {
@@ -83,31 +66,23 @@ namespace Niind
                     var encryptedContent = client.DownloadData(sapd);
 
                     EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
-                    byte[] decryptedContent;
-                    using (var aes = new RijndaelManaged
-                           {
-                               Padding = PaddingMode.None,
-                               Mode = CipherMode.CBC,
-                           })
-                    {
-                        var contentIV = CastingHelper.LEToBE_UInt16(contentDescriptor.Index);
-                        EncryptionHelper.PadByteArrayToMultipleOf(ref contentIV, 0x10);
 
-                        var decryptor = aes.CreateDecryptor(decryptedTitleKey, contentIV);
+                    var contentIV = CastingHelper.LEToBE_UInt16(contentDescriptor.Index);
 
-                        using var memoryStream = new MemoryStream(encryptedContent);
-                        using var cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read);
+                    EncryptionHelper.PadByteArrayToMultipleOf(ref contentIV, 0x10);
 
-                        decryptedContent = new byte[contentDescriptor.Size];
-                        _ = cryptoStream.Read(decryptedContent, 0x0, decryptedContent.Length);
-                    }
+                    var decryptedContent = EncryptionHelper.AESDecrypt(
+                        encryptedContent,
+                        decryptedTitleKey,
+                        (int)contentDescriptor.Size,
+                        contentIV);
 
-                    shaEngine.Initialize();
-                    shaEngine.ComputeHash(decryptedContent);
 
+                    var decryptedHash = EncryptionHelper.GetSHA1(decryptedContent);
+                    
                     Console.WriteLine($"Received Data Length from NUS: {encryptedContent.Length}");
 
-                    if (contentDescriptor.SHA1.SequenceEqual(shaEngine.Hash))
+                    if (contentDescriptor.SHA1.SequenceEqual(decryptedHash))
                     {
                         Console.WriteLine("Hash Matched with Title Metadata: " +
                                           EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
@@ -123,12 +98,10 @@ namespace Niind
                         Console.WriteLine("Hash did not match! Skipping this title..");
                         Console.WriteLine("Expected Hash: " +
                                           EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
-                        Console.WriteLine("Got Hash     : " + EncryptionHelper.ByteArrayToHexString(shaEngine.Hash));
+                        Console.WriteLine("Got Hash     : " + EncryptionHelper.ByteArrayToHexString(decryptedHash));
                     }
                 }
             }
         }
-
-  }
-
+    }
 }

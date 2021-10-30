@@ -24,7 +24,7 @@ namespace Niind
                 var titleID = $"{titles.TicketID:X16}";
                 var tmdVersion = $"tmd.{titles.Version}";
                 
-                Console.WriteLine($"Downloading Title Ticket for {titleID}v{tmdVersion}");
+                Console.WriteLine($"Downloading Title Ticket for {titleID}v{titles.Version}");
                 
                 var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
                 var rawTicket = client.DownloadData(downloadCetkUri).CastToStruct<RawTicket>();
@@ -34,7 +34,7 @@ namespace Niind
                 if (rawTicket.CommonKeyIndex[0] != 0)
                 {
                     Console.WriteLine(
-                        $"Expected Common Key Index to be 0 for {titleID}v{tmdVersion} but got {rawTicket.CommonKeyIndex[0]}. Skipping.");
+                        $"Expected Common Key Index to be 0 for {titleID}v{titles.Version} but got {rawTicket.CommonKeyIndex[0]}. Skipping.");
                     continue;
                 }
                 

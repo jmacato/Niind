@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Niind.Structures;
+using Aes = System.Runtime.Intrinsics.X86.Aes;
 
 namespace Niind
 {
@@ -36,16 +37,15 @@ namespace Niind
                         $"Expected Common Key Index to be 0 for {titleID}v{tmdVersion} but got {rawTicket.CommonKeyIndex[0]}. Skipping.");
                     continue;
                 }
-
-
-                Console.WriteLine("Downloading Title Metadata for ");
-
-
+                
+                Console.WriteLine("Downloading Title Metadata. ");
+                
                 var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
                 var decodedTmd = TitleMetadata.FromByteArray(client.DownloadData(downloadTmdUri));
+                
                 var keyIV = (rawTicket.TitleID_KeyIV);
-
                 EncryptionHelper.PadByteArrayToMultipleOf(ref keyIV, 0x10);
+                
                 var shaEngine = SHA1.Create();
                 byte[] decryptedTitleKey;
 
@@ -77,13 +77,11 @@ namespace Niind
 
                 foreach (var contentDescriptor in decodedTmd.ContentDescriptors)
                 {
-                    Console.WriteLine($"Decrypting Title Content Index: {contentDescriptor.Index}");
+                    Console.WriteLine($"Decrypting Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index}");
                     
                     var sapd = new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
                     var encryptedContent = client.DownloadData(sapd);
-                   
-                    Console.WriteLine($"Received Data Length from NUS: {encryptedContent.Length}");
-
+                    
                     EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
                     byte[] decryptedContent;
                     using (var aes = new RijndaelManaged

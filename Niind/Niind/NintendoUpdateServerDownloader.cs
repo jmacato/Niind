@@ -22,13 +22,9 @@ namespace Niind
             {
                 var titleID = $"{titles.TicketID:X16}";
                 var tmdVersion = $"tmd.{titles.Version}";
-
-
-                if (titleID != "0000000100000004") continue;
-
+                
                 Console.WriteLine($"Downloading Title Ticket for {titleID}v{tmdVersion}");
-
-
+                
                 var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
                 var rawTicket = client.DownloadData(downloadCetkUri).CastToStruct<RawTicket>();
                 File.WriteAllBytes("0000000100000004.cetk.bin", client.DownloadData(downloadCetkUri));
@@ -119,13 +115,16 @@ namespace Niind
                         Console.WriteLine("Hash Matched with Title Metadata: " + EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
                         Console.WriteLine($"Decrypted Length: {decryptedContent.Length}");
                         Console.WriteLine($"Length Delta: {decryptedContent.Length - encryptedContent.Length}");
+
+                        contentDescriptor.DecryptedContent = decryptedContent;
+                        contentDescriptor.DecryptionKey = decryptedTitleKey;
+                        contentDescriptor.DecryptionIV = keyIV;
                     }
                     else
                     {
                         Console.WriteLine("Hash did not match! Skipping this title..");
                         Console.WriteLine("Expected Hash: " + EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
                         Console.WriteLine("Got Hash     : " + EncryptionHelper.ByteArrayToHexString(shaEngine.Hash));
-                        continue;
                     }
                 }
             }
@@ -207,7 +206,7 @@ namespace Niind
             public byte[] TimeLimitStructs;
         }
 
-        public struct RawTitleMetadataContentDescriptor : IMaterialize<TitleMetadataContentDescriptor>
+        public struct RawTitleMetadataContentDescriptor : IMaterialize<TitleMetadataContent>
         {
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
             public byte[] ContentID;
@@ -224,9 +223,9 @@ namespace Niind
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
             public byte[] SHA1;
 
-            public TitleMetadataContentDescriptor ToManagedObject()
+            public TitleMetadataContent ToManagedObject()
             {
-                return new TitleMetadataContentDescriptor
+                return new TitleMetadataContent
                 {
                     ContentID = CastingHelper.BEToLE_UInt32(ContentID),
                     Index = CastingHelper.BEToLE_UInt16(Index),
@@ -240,10 +239,10 @@ namespace Niind
         public struct TitleMetadata
         {
             public TitleMetadataHeader Header { get; }
-            public IList<TitleMetadataContentDescriptor> ContentDescriptors { get; }
+            public IList<TitleMetadataContent> ContentDescriptors { get; }
 
             private TitleMetadata(TitleMetadataHeader header,
-                IList<TitleMetadataContentDescriptor> contentDescriptors)
+                IList<TitleMetadataContent> contentDescriptors)
             {
                 Header = header;
                 ContentDescriptors = contentDescriptors;
@@ -263,7 +262,7 @@ namespace Niind
 
                 var sz = Marshal.SizeOf<RawTitleMetadataContentDescriptor>();
 
-                var contentDescriptors = new List<TitleMetadataContentDescriptor>();
+                var contentDescriptors = new List<TitleMetadataContent>();
                 for (var i = 0; i < nbr * sz; i += sz)
                 {
                     var contentDescBytes = contentSpan[i..(i + sz)];
@@ -278,13 +277,16 @@ namespace Niind
         }
 
 
-        public struct TitleMetadataContentDescriptor
+        public class TitleMetadataContent
         {
             public uint ContentID;
             public ushort Index;
             public ushort Type;
             public ulong Size;
             public byte[] SHA1;
+            public byte[] DecryptedContent;
+            public byte[] DecryptionKey;
+            public byte[] DecryptionIV;
         }
 
         public struct TitleMetadataHeader

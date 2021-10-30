@@ -6,7 +6,7 @@ namespace Niind.Helpers
 {
     public static class EncryptionHelper
     {
-        static SHA1 shaEngine = SHA1.Create();
+        private static readonly SHA1 shaEngine = SHA1.Create();
 
         public static byte[] GetSHA1(byte[] data)
         {
@@ -17,8 +17,7 @@ namespace Niind.Helpers
                 return shaEngine.Hash;
             }
         }
-
-
+        
         public static byte[] AESDecrypt(byte[] cryptext, byte[] key, int outputLen, byte[]? iv = null)
         {
             using var aes = new RijndaelManaged
@@ -38,7 +37,7 @@ namespace Niind.Helpers
             return plaintext;
         }
 
-        public static byte[] AESEncrypt(byte[] plaintext, byte[] key, byte[]? iv = null)
+        public static byte[] AESEncrypt(byte[] plaintext, byte[] key, int len, byte[]? iv = null)
         {
             using var aes = new RijndaelManaged
             {
@@ -49,9 +48,11 @@ namespace Niind.Helpers
             var encryptor = aes.CreateEncryptor(key, iv);
             using var memoryStream = new MemoryStream(plaintext);
             using var cryptoStream = new CryptoStream(memoryStream, encryptor, CryptoStreamMode.Read);
-            using var outMs = new MemoryStream();
-            cryptoStream.CopyTo(memoryStream);
-            return memoryStream.ToArray();
+
+            var cryptext = new byte[len];
+            _ = cryptoStream.Read(cryptext, 0x0, len);
+
+            return cryptext;
         }
 
         public static void PadByteArrayToMultipleOf(ref byte[] src, int pad)

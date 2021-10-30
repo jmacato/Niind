@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
-using Niind.Structures;
 using Niind.Structures.FileSystem;
 
 // ReSharper disable All

@@ -27,7 +27,6 @@ namespace Niind
                 
                 var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
                 var rawTicket = client.DownloadData(downloadCetkUri).CastToStruct<RawTicket>();
-                File.WriteAllBytes("0000000100000004.cetk.bin", client.DownloadData(downloadCetkUri));
 
                 var issuer = Encoding.ASCII.GetString(rawTicket.Issuer).Trim(char.MinValue);
 

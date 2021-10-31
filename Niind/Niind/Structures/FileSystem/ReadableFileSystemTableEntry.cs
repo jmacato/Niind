@@ -34,12 +34,12 @@ namespace Niind.Structures.FileSystem
             var fileNameBuf = new byte[0xC];
             fileName.CopyTo(fileNameBuf, 0);
 
-            var sub = CastingHelper.LEToBE_UInt16(Sub);
-            var sib = CastingHelper.LEToBE_UInt16(Sib);
-            var fileSize = CastingHelper.LEToBE_UInt32(FileSize);
-            var uid = CastingHelper.LEToBE_UInt32(UserID);
-            var gid = CastingHelper.LEToBE_UInt16(GroupID);
-            var x3 = CastingHelper.LEToBE_UInt32(X3);
+            var sub = CastingHelper.Swap_BA(Sub);
+            var sib = CastingHelper.Swap_BA(Sib);
+            var fileSize = CastingHelper.Swap_BA(FileSize);
+            var uid = CastingHelper.Swap_BA(UserID);
+            var gid = CastingHelper.Swap_BA(GroupID);
+            var x3 = CastingHelper.Swap_BA(X3);
 
             return new RawFileSystemTableEntry(fileNameBuf, attr, sub, sib, fileSize, uid, gid, x3);
         }
@@ -67,12 +67,12 @@ namespace Niind.Structures.FileSystem
                 ? Encoding.ASCII.GetString(rawFST.FileName).Substring(0, x)
                 : Encoding.ASCII.GetString(rawFST.FileName);
 
-            var sub = CastingHelper.BEToLE_UInt16(rawFST.SubBigEndian);
-            var sib = CastingHelper.BEToLE_UInt16(rawFST.SibBigEndian);
-            var fileSize = CastingHelper.BEToLE_UInt32(rawFST.FileSizeBigEndian);
-            var uid = CastingHelper.BEToLE_UInt32(rawFST.UserIDBigEndian);
-            var gid = CastingHelper.BEToLE_UInt16(rawFST.GroupIDBigEndian);
-            var x3 = CastingHelper.BEToLE_UInt32(rawFST.X3);
+            var sub = CastingHelper.BA_Swap16(rawFST.SubBigEndian);
+            var sib = CastingHelper.BA_Swap16(rawFST.SibBigEndian);
+            var fileSize = CastingHelper.BA_Swap32(rawFST.FileSizeBigEndian);
+            var uid = CastingHelper.BA_Swap32(rawFST.UserIDBigEndian);
+            var gid = CastingHelper.BA_Swap16(rawFST.GroupIDBigEndian);
+            var x3 = CastingHelper.BA_Swap32(rawFST.X3);
 
             IsFile = isFile;
             IsDirectory = isDirectory;

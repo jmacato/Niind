@@ -75,24 +75,24 @@ namespace Niind.Structures.TitlesSystem
         {
             return new TitleMetadataHeader
             {
-                SignatureType = (SignatureType)CastingHelper.BEToLE_UInt32(SignatureType),
+                SignatureType = (SignatureType)CastingHelper.BA_Swap32(SignatureType),
                 Signature = Signature,
                 Issuer = Issuer,
                 Version = Version,
                 ca_crl_version = ca_crl_version,
                 signer_crl_version = signer_crl_version,
                 IsVWii = IsVWii == 1,
-                SystemVersion = CastingHelper.BEToLE_UInt64(SystemVersion),
-                TitleID = CastingHelper.BEToLE_UInt64(TitleID),
-                TitleType = CastingHelper.BEToLE_UInt32(TitleType),
-                GroupID = CastingHelper.BEToLE_UInt16(GroupID),
-                Region = CastingHelper.BEToLE_UInt16(Region),
+                SystemVersion = CastingHelper.BA_Swap64(SystemVersion),
+                TitleID = CastingHelper.BA_Swap64(TitleID),
+                TitleType = CastingHelper.BA_Swap32(TitleType),
+                GroupID = CastingHelper.BA_Swap16(GroupID),
+                Region = CastingHelper.BA_Swap16(Region),
                 Ratings = Ratings,
                 IPCMask = IPCMask,
-                AccessRights = CastingHelper.BEToLE_UInt32(AccessRights),
-                TitleVersion = CastingHelper.BEToLE_UInt16(TitleVersion),
-                NumberOfContents = CastingHelper.BEToLE_UInt16(NumberOfContents),
-                BootIndex = CastingHelper.BEToLE_UInt16(BootIndex)
+                AccessRights = CastingHelper.BA_Swap32(AccessRights),
+                TitleVersion = CastingHelper.BA_Swap16(TitleVersion),
+                NumberOfContents = CastingHelper.BA_Swap16(NumberOfContents),
+                BootIndex = CastingHelper.BA_Swap16(BootIndex)
             };
         }
     }

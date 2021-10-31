@@ -67,7 +67,7 @@ namespace Niind
 
                     EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
 
-                    var contentIV = CastingHelper.LEToBE_UInt16(contentDescriptor.Index);
+                    var contentIV = CastingHelper.Swap_BA(contentDescriptor.Index);
 
                     EncryptionHelper.PadByteArrayToMultipleOf(ref contentIV, 0x10);
 

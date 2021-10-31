@@ -51,15 +51,12 @@ namespace Niind
                 throw new InvalidOperationException("The Key File provided is not for this specific NAND dump.");
 
             Console.WriteLine("Key file matches the NAND dump.");
-            
-            
-            
-            
-            
+
+
             var asdasd = new NintendoUpdateServerDownloader();
-            
-            asdasd.GetUpdate(keyData);
-            
+
+           // asdasd.GetUpdate(keyData);
+
 
             var distilledNand = NandProcessAndCheck(nandData, keyData);
 
@@ -91,11 +88,10 @@ namespace Niind
 
             Console.WriteLine($"Serial Number: {infoNew["CODE"]}{infoNew["SERNO"]}");
             Console.WriteLine($"Region       : {infoNew["AREA"]}");
-
-
+            
             Console.WriteLine("Trying to reformat the NAND in memory (no writes to actual NAND).");
 
-            NandBlankSlate(distilledNand);
+            distilledNand.EraseAndReformat();
 
             distilledNand = NandProcessAndCheck(distilledNand.NandDumpFile, distilledNand.KeyFile);
 
@@ -110,20 +106,35 @@ namespace Niind
             currentRoot.CreateDirectory("/meta", 0x1000, 1, group: NodePerm.RW);
             currentRoot.CreateDirectory("/tmp", group: NodePerm.RW);
 
-            // currentRoot.CreateFile("/tmp/test1.txt", Encoding.ASCII.GetBytes("Hello World!").AsMemory(),
-            //     other: NodePerm.Read);
-            //
-            // currentRoot.CreateFile("/tmp/test2.txt", Encoding.ASCII.GetBytes("Hello World 2!").AsMemory(),
-            //     other: NodePerm.Read);
+            currentRoot.CreateFile("/tmp/test1.txt", Encoding.ASCII.GetBytes("Hello World!").AsMemory(),
+                other: NodePerm.Read);
+            
+            currentRoot.CreateFile("/tmp/test2.txt", Encoding.ASCII.GetBytes("Hello World 2!").AsMemory(),
+                other: NodePerm.Read);
 
             currentRoot.WriteAndCommitToNand(distilledNand);
 
             Console.WriteLine("Checking the reformatted NAND.");
 
             NandProcessAndCheck(distilledNand.NandDumpFile, distilledNand.KeyFile);
+            // OutputFileContent(distilledNand, "test1.txt");
+            // OutputFileContent(distilledNand, "test2.txt");
 
+            
 
             File.WriteAllBytes("test2.bin", distilledNand.NandDumpFile.CastToArray());
+        }
+
+
+         static byte[] GetFileContent(DistilledNand distilledNand, string filename)
+        {
+            var xww = distilledNand.RootNode
+                .GetDescendants().FirstOrDefault(x => x.Filename == filename);
+
+            if (xww is null) return Array.Empty<byte>();
+
+            var encData = xww.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+            return encData;
         }
 
         private static Dictionary<string, string>? GetSystemInfo(DistilledNand distilledNand)
@@ -178,80 +189,14 @@ namespace Niind
             rawtxt = buffer.ToArray();
         }
 
-        private static void NandBlankSlate(DistilledNand distilledNand)
-        {
-            var superBlockTarget = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
-
-            var validClusters = distilledNand.ValidClusters.Keys;
-            var clusterDeleted = 0;
-            // Erase all used clusters.
-            for (ushort i = 0; i < superBlockTarget.ClusterEntries.Length; i++)
-            {
-                if (validClusters.Contains(i))
-                {
-                    Console.Write($"\rDeleting cluster {clusterDeleted} of {validClusters.Count}");
-                    // Mark cluster as free space.
-                    superBlockTarget.ClusterEntries[i] = ByteWiseSwap((ushort)ClusterDescriptor.Empty);
-#if DEBUG
-                    
-                    // Actually delete the data.
-                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
-                    var target = distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
-                    target.EraseData(distilledNand.KeyFile);
-#endif
-                    clusterDeleted++;
-                }
-            }
-
-            Console.WriteLine("Cluster deletion complete.");
-            Console.WriteLine("Purging Filesystem Entries except for root.");
-
-            var emptyFST = Constants.EmptyFST.CastToStruct<RawFileSystemTableEntry>();
-
-            for (var i = 1; i < superBlockTarget.RawFileSystemTableEntries.Length; i++)
-            {
-                superBlockTarget.RawFileSystemTableEntries[i] = emptyFST;
-            }
-
-            Console.WriteLine("Capping root FST.");
-            var rootFST = superBlockTarget.RawFileSystemTableEntries[0].SubBigEndian = BitConverter.GetBytes(0xFFFF);
-            uint sbVersion = 0;
-
-            // Rewrite every single superblocks to erase any trace of the old files.
-            foreach (var desc in distilledNand.SuperBlockDescriptors)
-            {
-                Console.WriteLine(
-                    $"Overwriting Superblock at Cluster 0x{desc.Cluster:X} Offset 0x{desc.Offset:X} Version {desc.Version}");
-                Console.WriteLine($"Overwriting Version Number from {desc.Version} to {sbVersion++}");
-
-                var curCluster = desc.Cluster;
-
-                superBlockTarget.VersionBigEndian = BitConverter.GetBytes(sbVersion).Reverse().ToArray();
-
-                var rawSB = superBlockTarget.CastToArray();
-
-                for (var i = 0; i < Constants.SuperBlocksClusterIncrement; i++)
-                {
-                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(
-                        (uint)(curCluster + i));
-                    var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
-                        (int)Constants.NandClusterNoSpareByteSize);
-
-                    distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster]
-                        .WriteDataNoEncryption(chunk.ToArray());
-                }
-
-                SuperBlock.RecalculateHMAC(ref rawSB, distilledNand.NandDumpFile, distilledNand.KeyFile, curCluster);
-            }
-        }
 
         private static DistilledNand NandProcessAndCheck(NandDumpFile nandData, KeyFile keyData)
         {
             var foundSuperblocks = new List<SuperBlockDescriptor>();
 
             for (ushort i = Constants.SuperBlocksBaseCluster;
-                i <= Constants.SuperBlocksEndCluster;
-                i += Constants.SuperBlocksClusterIncrement)
+                 i <= Constants.SuperBlocksEndCluster;
+                 i += Constants.SuperBlocksClusterIncrement)
             {
                 var sp = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
 
@@ -349,7 +294,7 @@ namespace Niind
 
             ushort clusterIndex = 0x0;
 
-            foreach (var clusterDesc in readableSuperBlock.ClusterEntries.Select(ByteWiseSwap))
+            foreach (var clusterDesc in readableSuperBlock.ClusterEntries.Select(CastingHelper.Swap_Val))
             {
                 switch ((ClusterDescriptor)clusterDesc)
                 {
@@ -488,9 +433,6 @@ namespace Niind
 
                 for (var i = 0x0; i < file.Clusters.Count; i++)
                 {
-                    if ((ClusterDescriptor)file.Clusters[i] == ClusterDescriptor.ChainLast)
-                        break;
-
                     var clusterIndex1 = BitConverter.GetBytes((uint)i).Reverse().ToArray();
                     clusterIndex1.CopyTo(saltF.AsSpan().Slice(0x10, 4));
 

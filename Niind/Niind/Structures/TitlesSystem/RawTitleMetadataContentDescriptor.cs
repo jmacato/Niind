@@ -24,10 +24,10 @@ namespace Niind.Structures.TitlesSystem
         {
             return new TitleMetadataContent
             {
-                ContentID = CastingHelper.BEToLE_UInt32(ContentID),
-                Index = CastingHelper.BEToLE_UInt16(Index),
-                Type = CastingHelper.BEToLE_UInt16(Type),
-                Size = CastingHelper.BEToLE_UInt64(Size),
+                ContentID = CastingHelper.BA_Swap32(ContentID),
+                Index = CastingHelper.BA_Swap16(Index),
+                Type = CastingHelper.BA_Swap16(Type),
+                Size = CastingHelper.BA_Swap64(Size),
                 SHA1 = SHA1
             };
         }

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using Niind.Helpers;
 
 namespace Niind.Structures.FileSystem
@@ -9,6 +11,8 @@ namespace Niind.Structures.FileSystem
     public sealed class NandRootNode : NandDirectoryNode
     {
         private readonly DistilledNand _distilledNand;
+
+        public DistilledNand DistilledNand => _distilledNand;
 
         public NandRootNode(DistilledNand distilledNand) : base("/")
         {
@@ -115,7 +119,7 @@ namespace Niind.Structures.FileSystem
             return (ushort)((0x00FF & (value >> 8))
                             | (0xFF00 & (value << 8)));
         }
-        
+
         public static void NandWriteSuperBlock(DistilledNand distilledNand, SuperBlock superBlockTarget)
         {
             uint sbVersion = 0;
@@ -141,14 +145,14 @@ namespace Niind.Structures.FileSystem
                         (int)Constants.NandClusterNoSpareByteSize);
 
                     distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster]
-                        .WriteDataNoEncryption(chunk.ToArray());
+                        .WriteData(chunk.ToArray());
                 }
 
                 SuperBlock.RecalculateHMAC(ref rawSB, distilledNand.NandDumpFile, distilledNand.KeyFile, curCluster);
             }
         }
 
-        public void WriteAndCommitToNand(DistilledNand distilledNand)
+        public DistilledNand WriteAndCommitToNand()
         {
             // Flatten the hierarchy.
             // Place the directories first in the
@@ -209,42 +213,93 @@ namespace Niind.Structures.FileSystem
                 }
             }
 
-            distilledNand.EraseAndReformat();
+            _distilledNand.EraseAndReformat();
 
-            var cnt0 = 0;
-            var superBlockTarget = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
+            var superBlockTarget = _distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
 
-            foreach (var file in nodeList.Where(node => node is NandFileNode).Cast<NandFileNode>())
+            foreach (var node in nodeList)
             {
+                var fst = node.Materialize().ToRawFST();
+                superBlockTarget.RawFileSystemTableEntries[node.FSTIndex] = fst;
+
+                if (node is not NandFileNode file) continue;
+
                 var orderedClusters = new LinkedList<ushort>(file.AllocatedClusters.OrderBy(x => x));
 
                 var cur = orderedClusters.First;
                 var curClusterVal = cur.Value;
+                var clusterIndex = 0;
                 while (cur is not null)
                 {
                     var nextCluster = cur.Next;
 
                     if (nextCluster is null)
                     {
-                        superBlockTarget.ClusterEntries[curClusterVal] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.ChainLast);
+                        superBlockTarget.ClusterEntries[curClusterVal] =
+                            CastingHelper.Swap_Val((ushort)ClusterDescriptor.ChainLast);
                     }
                     else
                     {
                         superBlockTarget.ClusterEntries[curClusterVal] = CastingHelper.Swap_Val(nextCluster.Value);
                     }
 
+                    var (block, cluster) =
+                        NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(curClusterVal);
+
+                    var chunkLen = (int)Math.Min(Constants.NandClusterNoSpareByteSize, file.RawData.Length);
+
+                    var chunk = file.RawData.Slice((int)(clusterIndex * Constants.NandClusterNoSpareByteSize),
+                        chunkLen).ToArray();
+                    
+                    EncryptionHelper.PadByteArrayToMultipleOf(ref chunk, (int)Constants.NandClusterNoSpareByteSize);
+                    
+                    var targetCluster = _distilledNand.NandDumpFile.Blocks[block].Clusters[cluster];
+
+                    targetCluster.WriteDataAsEncrypted(_distilledNand.KeyFile, chunk);
+
+                    RecalculateFileHMAC(fst, _distilledNand.KeyFile, (uint)file.FSTIndex, curClusterVal,
+                        targetCluster);
+                    
+                    clusterIndex++;
+
                     cur = nextCluster;
                 }
             }
 
-            foreach (var rawFST in nodeList.Select(node => node.Materialize().ToRawFST()))
-            {
-                superBlockTarget.RawFileSystemTableEntries[cnt0] = rawFST;
-                cnt0++;
-            }
+            NandWriteSuperBlock(_distilledNand, superBlockTarget);
+
+            return _distilledNand;
+        }
 
 
-            NandWriteSuperBlock(distilledNand, superBlockTarget);
+        private void RecalculateFileHMAC(RawFileSystemTableEntry entry, KeyFile keyData, uint entryIndex,
+            uint clusterIndex, NandCluster targetCluster)
+        {
+            var saltF = new byte[0x40];
+            entry.UserIDBigEndian.CopyTo(saltF.AsSpan()[..4]);
+            entry.FileName.CopyTo(saltF.AsSpan()[0x4..]);
+            var fstIndex = CastingHelper.Swap_BA(entryIndex);
+            fstIndex.CopyTo(saltF.AsSpan().Slice(0x14, 4));
+            entry.X3.CopyTo(saltF.AsSpan().Slice(0x18, 4));
+
+            var c = BitConverter.GetBytes(clusterIndex).Reverse().ToArray();
+            c.CopyTo(saltF.AsSpan().Slice(0x10, 4));
+
+            using var hmac = new HMACSHA1(keyData.NandHMACKey);
+            using var mm = new MemoryStream();
+            mm.Write(saltF);
+            mm.Write(targetCluster.DecryptCluster(keyData));
+            mm.Position = 0;
+
+            var newHMAC = hmac.ComputeHash(mm);
+            var sp1 = targetCluster.Pages[0x6].SpareData;
+            var sp2 = targetCluster.Pages[0x7].SpareData;
+
+            targetCluster.PurgeSpareData();
+            newHMAC.CopyTo(sp1.AsSpan()[0x1..0x15]);
+            newHMAC.AsSpan()[..0xc].CopyTo(sp1.AsSpan().Slice(0x15, 0xc));
+            newHMAC.AsSpan()[(newHMAC.Length - 8)..].CopyTo(sp2.AsSpan()[1..]);
+            targetCluster.RecalculateECC();
         }
     }
 }

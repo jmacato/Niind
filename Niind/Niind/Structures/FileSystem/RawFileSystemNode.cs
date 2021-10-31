@@ -53,10 +53,10 @@ namespace Niind.Structures.FileSystem
 
 
             Console.Write(Filename + (IsFile ? "" : "/"));
-            
-            if(IsFile)
-            Console.Write($"\t\t{FSTEntry.FileSize} bytes");
-            
+
+            if (IsFile)
+                Console.Write($"\t\t{FSTEntry.FileSize} bytes");
+
             Console.WriteLine("");
 
             for (int i = 0; i < Children.Count; i++)
@@ -113,7 +113,7 @@ namespace Niind.Structures.FileSystem
 
             var newHMAC = hmac.ComputeHash(mm);
             Console.WriteLine(
-                $"{Filename} C {clusterIndex} hmac {string.Join("", newHMAC.Select(x => x.ToString("X2")))}");
+                $"{Filename} C {clusterIndex} hmac {newHMAC:X20}");
             var sp1 = targetCluster.Pages[0x6].SpareData;
             var sp2 = targetCluster.Pages[0x7].SpareData;
 

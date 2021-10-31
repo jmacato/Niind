@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Niind.Helpers;
 
@@ -108,51 +109,15 @@ namespace Niind.Structures.FileSystem
 
             return newFile;
         }
-        
+
         public static ushort ByteWiseSwap(ushort value)
         {
             return (ushort)((0x00FF & (value >> 8))
                             | (0xFF00 & (value << 8)));
         }
-
         
-        public static void NandBlankSlate(DistilledNand distilledNand)
+        public static void NandWriteSuperBlock(DistilledNand distilledNand, SuperBlock superBlockTarget)
         {
-            var superBlockTarget = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
-
-            var validClusters = distilledNand.ValidClusters.Keys;
-            var clusterDeleted = 0;
-            // Erase all used clusters.
-            for (ushort i = 0; i < superBlockTarget.ClusterEntries.Length; i++)
-            {
-                if (validClusters.Contains(i))
-                {
-                    Console.Write($"\rDeleting cluster {clusterDeleted} of {validClusters.Count}");
-                    // Mark cluster as free space.
-                    superBlockTarget.ClusterEntries[i] = ByteWiseSwap((ushort)ClusterDescriptor.Empty);
-
-                    #if DEBUG
-                    // Actually delete the data.
-                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
-                    var target = distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
-                    target.EraseData(distilledNand.KeyFile);
-#endif
-                    clusterDeleted++;
-                }
-            }
-
-            Console.WriteLine("Cluster deletion complete.");
-            Console.WriteLine("Purging Filesystem Entries except for root.");
-
-            var emptyFST = Constants.EmptyFST.CastToStruct<RawFileSystemTableEntry>();
-
-            for (var i = 1; i < superBlockTarget.RawFileSystemTableEntries.Length; i++)
-            {
-                superBlockTarget.RawFileSystemTableEntries[i] = emptyFST;
-            }
-
-            Console.WriteLine("Capping root FST.");
-            var rootFST = superBlockTarget.RawFileSystemTableEntries[0].SubBigEndian = BitConverter.GetBytes(0xFFFF);
             uint sbVersion = 0;
 
             // Rewrite every single superblocks to erase any trace of the old files.
@@ -175,46 +140,14 @@ namespace Niind.Structures.FileSystem
                     var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
                         (int)Constants.NandClusterNoSpareByteSize);
 
-                    distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster].WriteDataNoEncryption(chunk.ToArray());
+                    distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster]
+                        .WriteDataNoEncryption(chunk.ToArray());
                 }
 
-                SuperBlock.RecalculateHMAC(ref rawSB,  distilledNand.NandDumpFile,  distilledNand.KeyFile, curCluster);
+                SuperBlock.RecalculateHMAC(ref rawSB, distilledNand.NandDumpFile, distilledNand.KeyFile, curCluster);
             }
         }
-        
-        
-        public static void NandWriteSuperBlock(DistilledNand distilledNand, SuperBlock superBlockTarget)
-        {  
 
-             uint sbVersion = 0;
-
-            // Rewrite every single superblocks to erase any trace of the old files.
-            foreach (var desc in distilledNand.SuperBlockDescriptors)
-            {
-                Console.WriteLine(
-                    $"Overwriting Superblock at Cluster 0x{desc.Cluster:X} Offset 0x{desc.Offset:X} Version {desc.Version}");
-                Console.WriteLine($"Overwriting Version Number from {desc.Version} to {sbVersion++}");
-
-                var curCluster = desc.Cluster;
-
-                superBlockTarget.VersionBigEndian = BitConverter.GetBytes(sbVersion).Reverse().ToArray();
-
-                var rawSB = superBlockTarget.CastToArray();
-
-                for (var i = 0; i < Constants.SuperBlocksClusterIncrement; i++)
-                {
-                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(
-                        (uint)(curCluster + i));
-                    var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
-                        (int)Constants.NandClusterNoSpareByteSize);
-
-                    distilledNand.NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster].WriteDataNoEncryption(chunk.ToArray());
-                }
-
-                SuperBlock.RecalculateHMAC(ref rawSB,  distilledNand.NandDumpFile,  distilledNand.KeyFile, curCluster);
-            }
-        }
-        
         public void WriteAndCommitToNand(DistilledNand distilledNand)
         {
             // Flatten the hierarchy.
@@ -230,7 +163,7 @@ namespace Niind.Structures.FileSystem
 
             UsedClusters.Clear();
             UsedClusters.Add(0);
-            
+
             // Set FST Indices inside the nodes themselves so we dont have to 
             // keep track of them everytime.
             for (int i = 0; i < nodeList.Count; i++)
@@ -247,21 +180,21 @@ namespace Niind.Structures.FileSystem
                     var firstChild = node.Children.First();
                     node.SubordinateIndex = (ushort)firstChild.FSTIndex;
                 }
-                
+
                 // If the node has a parent, set its sibling to the
                 // next item in the parent's children list.
                 if (node.Parent is not null)
-                { 
+                {
                     var children = node.Parent.Children;
                     var limit = children.Count;
                     var curNode = node.Parent.Children.First;
-                    
+
                     while (true)
                     {
                         var sibling = curNode.Next;
-                        
+
                         curNode.Value.NodeConnected = true;
-                        
+
                         if (sibling is not null)
                         {
                             curNode.Value.SiblingIndex = (ushort)sibling.Value.FSTIndex;
@@ -276,24 +209,42 @@ namespace Niind.Structures.FileSystem
                 }
             }
 
-            NandBlankSlate(distilledNand);
+            distilledNand.EraseAndReformat();
 
             var cnt0 = 0;
             var superBlockTarget = distilledNand.MainSuperBlockRaw.CastToStruct<SuperBlock>();
 
-            foreach (var node in nodeList)
+            foreach (var file in nodeList.Where(node => node is NandFileNode).Cast<NandFileNode>())
             {
-                var asdasd = node.Materialize().ToRawFST();
-                
-                
+                var orderedClusters = new LinkedList<ushort>(file.AllocatedClusters.OrderBy(x => x));
 
-                superBlockTarget.RawFileSystemTableEntries[cnt0] = asdasd;
-                
+                var cur = orderedClusters.First;
+                var curClusterVal = cur.Value;
+                while (cur is not null)
+                {
+                    var nextCluster = cur.Next;
+
+                    if (nextCluster is null)
+                    {
+                        superBlockTarget.ClusterEntries[curClusterVal] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.ChainLast);
+                    }
+                    else
+                    {
+                        superBlockTarget.ClusterEntries[curClusterVal] = CastingHelper.Swap_Val(nextCluster.Value);
+                    }
+
+                    cur = nextCluster;
+                }
+            }
+
+            foreach (var rawFST in nodeList.Select(node => node.Materialize().ToRawFST()))
+            {
+                superBlockTarget.RawFileSystemTableEntries[cnt0] = rawFST;
                 cnt0++;
             }
 
 
-          NandWriteSuperBlock(distilledNand, superBlockTarget);
+            NandWriteSuperBlock(distilledNand, superBlockTarget);
         }
     }
 }

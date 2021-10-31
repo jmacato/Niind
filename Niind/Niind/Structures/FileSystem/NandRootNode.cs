@@ -94,7 +94,7 @@ namespace Niind.Structures.FileSystem
             newFile.UserID = userID;
             newFile.GroupID = groupID;
 
-            int pad = (int)Constants.NandClusterNoSpareByteSize;
+            var pad = (int)Constants.NandClusterNoSpareByteSize;
             var clustersNeeded = (data.Length + pad - 1) / pad;
             
             var fileClusters = _distilledNand
@@ -164,7 +164,7 @@ namespace Niind.Structures.FileSystem
 
             // Set FST Indices inside the nodes themselves so we dont have to 
             // keep track of them everytime.
-            for (int i = 0; i < nodeList.Count; i++)
+            for (var i = 0; i < nodeList.Count; i++)
             {
                 nodeList[i].FSTIndex = i;
             }

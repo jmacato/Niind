@@ -22,7 +22,7 @@ namespace Niind.Structures.FileSystem
 
         public void WriteData(byte[] rawData)
         {
-            for (int i = 0; i < Pages.Length; i++)
+            for (var i = 0; i < Pages.Length; i++)
             {
                 Pages[i].MainData =
                     rawData.AsSpan()

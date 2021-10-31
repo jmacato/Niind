@@ -10,7 +10,7 @@ namespace Niind.Helpers
     {
         public static IEnumerable<IEnumerable<byte>> Chunk(this byte[] fullList, int batchSize)
         {
-            int total = 0;
+            var total = 0;
             while (total < fullList.LongLength)
             {
                 yield return fullList.Skip(total).Take(batchSize).ToArray();

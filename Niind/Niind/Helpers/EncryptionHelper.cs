@@ -57,7 +57,7 @@ namespace Niind.Helpers
 
         public static void PadByteArrayToMultipleOf(ref byte[] src, int pad)
         {
-            int len = (src.Length + pad - 1) / pad * pad;
+            var len = (src.Length + pad - 1) / pad * pad;
             Array.Resize(ref src, len);
         }
 

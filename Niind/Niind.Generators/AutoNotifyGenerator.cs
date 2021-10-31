@@ -98,7 +98,7 @@ namespace Niind
 				return null;
 			}
 
-			string namespaceName = classSymbol.ContainingNamespace.ToDisplayString();
+			var namespaceName = classSymbol.ContainingNamespace.ToDisplayString();
 
 			var addNotifyInterface = !classSymbol.Interfaces.Contains(notifySymbol);
 			var baseType = classSymbol.BaseType;
@@ -147,7 +147,7 @@ namespace {namespaceName}
     {{");
 			}
 
-			foreach (IFieldSymbol fieldSymbol in fields)
+			foreach (var fieldSymbol in fields)
 			{
 				ProcessField(source, fieldSymbol, attributeSymbol);
 			}
@@ -247,7 +247,7 @@ namespace {namespaceName}
 				if (context.Node is FieldDeclarationSyntax fieldDeclarationSyntax
 					&& fieldDeclarationSyntax.AttributeLists.Count > 0)
 				{
-					foreach (VariableDeclaratorSyntax variable in fieldDeclarationSyntax.Declaration.Variables)
+					foreach (var variable in fieldDeclarationSyntax.Declaration.Variables)
 					{
 						if (context.SemanticModel.GetDeclaredSymbol(variable) is not IFieldSymbol fieldSymbol)
 						{

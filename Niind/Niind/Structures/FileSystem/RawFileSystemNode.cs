@@ -58,7 +58,7 @@ namespace Niind.Structures.FileSystem
 
             Console.WriteLine("");
 
-            for (int i = 0; i < Children.Count; i++)
+            for (var i = 0; i < Children.Count; i++)
                 Children[i].PrintPretty(indent, i == Children.Count - 1);
         }
 

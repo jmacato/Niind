@@ -27,7 +27,7 @@ namespace Niind.Structures.FileSystem
         {
             var foundSuperblocks = new List<SuperBlockDescriptor>();
 
-            for (ushort i = Constants.SuperBlocksBaseCluster;
+            for (var i = Constants.SuperBlocksBaseCluster;
                  i <= Constants.SuperBlocksEndCluster;
                  i += Constants.SuperBlocksClusterIncrement)
             {
@@ -325,9 +325,9 @@ namespace Niind.Structures.FileSystem
                     superBlockTarget.ClusterEntries[i] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.Empty);
                     
                     // Actually delete the data.
-                    // var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
-                    // var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
-                    // target.EraseData(KeyFile);
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
+                    var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
+                    target.EraseData(KeyFile);
                     clusterDeleted++;
                 }
             }

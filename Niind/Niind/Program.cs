@@ -55,8 +55,8 @@ namespace Niind
 
             var asdasd = new NintendoUpdateServerDownloader();
 
-           // asdasd.GetUpdate(keyData);
-           
+            // asdasd.GetUpdate(keyData);
+
             var distilledNand = new DistilledNand(nandData, keyData);
 
             //
@@ -106,28 +106,26 @@ namespace Niind
             currentRoot.CreateDirectory("/tmp", group: NodePerm.RW);
 
             var rndSrc = new Random();
-            
-            var testFile = new byte[((int)Constants.NandClusterNoSpareByteSize * 1)];
-            
+
+            var testFile =
+                new byte[Math.Max(1, (int)((Constants.NandClusterNoSpareByteSize * 5) * rndSrc.NextDouble()))];
+
             rndSrc.NextBytes(testFile);
-            
+
             var h1 = EncryptionHelper.GetSHA1(testFile);
-            
+
             currentRoot.CreateFile("/tmp/test1.txt", testFile,
                 other: NodePerm.Read);
-            //
-            // currentRoot.CreateFile("/tmp/test2.txt", Encoding.ASCII.GetBytes("Hello World 2!").AsMemory(),
-            //     other: NodePerm.Read);
 
             distilledNand = currentRoot.WriteAndCommitToNand();
 
             Console.WriteLine("Checking the reformatted NAND.");
 
-            distilledNand .NandProcessAndCheck();
+            distilledNand.NandProcessAndCheck();
 
             var retTestFile = GetFileContent(distilledNand, "test1.txt");
             var h2 = EncryptionHelper.GetSHA1(retTestFile);
-            
+
             if (h1.SequenceEqual(h2))
             {
                 Console.WriteLine($"Random Test File Verification Success. Hash: {ToHex(h1)}");
@@ -135,7 +133,7 @@ namespace Niind
         }
 
 
-         static byte[] GetFileContent(DistilledNand distilledNand, string filename)
+        static byte[] GetFileContent(DistilledNand distilledNand, string filename)
         {
             var rawNode = distilledNand.RootNode
                 .GetDescendants().FirstOrDefault(x => x.Filename == filename);
@@ -197,7 +195,7 @@ namespace Niind
 
             rawtxt = buffer.ToArray();
         }
-        
+
         private static string ToHex(byte[] inx)
         {
             return BitConverter.ToString(inx).Replace("-", "");

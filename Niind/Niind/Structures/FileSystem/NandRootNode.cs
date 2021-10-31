@@ -13,8 +13,6 @@ namespace Niind.Structures.FileSystem
     {
         private readonly DistilledNand _distilledNand;
 
-        public DistilledNand DistilledNand => _distilledNand;
-
         public NandRootNode(DistilledNand distilledNand) : base("/")
         {
             _distilledNand = distilledNand;
@@ -114,12 +112,6 @@ namespace Niind.Structures.FileSystem
             newFile.SubordinateIndex = newFile.AllocatedClusters.First();
 
             return newFile;
-        }
-
-        public static ushort ByteWiseSwap(ushort value)
-        {
-            return (ushort)((0x00FF & (value >> 8))
-                            | (0xFF00 & (value << 8)));
         }
 
         public static void NandWriteSuperBlock(DistilledNand distilledNand, SuperBlock superBlockTarget)
@@ -254,12 +246,9 @@ namespace Niind.Structures.FileSystem
                 {
                     var (absCluster, data) = dataChunk; 
                     var (block, cluster) = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(absCluster);
-                    
                     var chunk = data.ToArray();
-
-                    EncryptionHelper.PadByteArrayToMultipleOf(ref chunk, (int)Constants.NandClusterNoSpareByteSize);
-                    
                     var targetCluster = _distilledNand.NandDumpFile.Blocks[block].Clusters[cluster];
+                    EncryptionHelper.PadByteArrayToMultipleOf(ref chunk, (int)Constants.NandClusterNoSpareByteSize);
 
                     targetCluster.WriteDataAsEncrypted(_distilledNand.KeyFile, chunk);
 

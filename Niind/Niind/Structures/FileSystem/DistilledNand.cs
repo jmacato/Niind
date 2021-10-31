@@ -191,9 +191,11 @@ namespace Niind.Structures.FileSystem
                     newFile.Clusters.Add(startingCluster);
 
                     var nextCluster = startingCluster;
-
-                    var estimatedClusterCount = (rFST.FileSize / Constants.NandClusterNoSpareByteSize) + 0x1;
-
+                    
+                    var pad = (int)Constants.NandClusterNoSpareByteSize;
+                    
+                    var estimatedClusterCount = (rFST.FileSize + pad - 1) / pad;
+                    
                     var watchdogCounter = 0x0;
 
                     while (watchdogCounter < estimatedClusterCount && rFST.FileSize > 0)
@@ -253,6 +255,8 @@ namespace Niind.Structures.FileSystem
                 var file = entry.Value;
 
                 if (!file.IsFile) continue;
+                if (file.FSTEntry.FileSize == 0) 
+                    continue;
 
                 var saltF = new byte[0x40];
 

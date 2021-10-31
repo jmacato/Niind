@@ -109,7 +109,10 @@ namespace Niind.Structures.FileSystem
             UsedClusters.AddRange(fileClusters);
 
             newFile.AllocatedClusters = fileClusters;
-            newFile.SubordinateIndex = newFile.AllocatedClusters.First();
+            
+            newFile.SubordinateIndex = clustersNeeded > 0 ? 
+                newFile.AllocatedClusters.First() : 
+                (ushort)ClusterDescriptor.ChainLast ;
 
             return newFile;
         }

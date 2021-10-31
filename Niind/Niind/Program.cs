@@ -15,11 +15,13 @@ namespace Niind
     {
         private static void Main(string[] args)
         {
+            
             Console.WriteLine("Loading Files...");
-
+            
             var rawFullDump =
                 File.ReadAllBytes(
                     "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb copy 2.bin");
+
             Console.WriteLine("Nand File Loaded.");
 
             var rawKeyFile =
@@ -51,49 +53,18 @@ namespace Niind
                 throw new InvalidOperationException("The Key File provided is not for this specific NAND dump.");
 
             Console.WriteLine("Key file matches the NAND dump.");
-
-
-            var asdasd = new NintendoUpdateServerDownloader();
-
-            // asdasd.GetUpdate(keyData);
+            
+            
+            
+            
 
             var distilledNand = new DistilledNand(nandData, keyData);
+ 
 
-            //
-            // Console.WriteLine("Getting Manufacturing System Info.");
-            //
-            // var info = GetSystemInfo(distilledNand);
-            // if (info is not null)
-            // {
-            //     Console.WriteLine($"Serial Number: {info["CODE"]}{info["SERNO"]}");
-            //     Console.WriteLine($"Region       : {info["AREA"]}");
-            // }
-            //
-            // Console.WriteLine("Trying to set Manufacturing System Info.");
-            //
-            // info["AREA"] = "USA";
-            // info["CODE"] = "NUL";
-            // info["SERNO"] = "13371337";
-            //
-            // SetSystemInfo(distilledNand, info);
-            //
-            // Console.WriteLine("Checking the NAND.");
-            //
-            // distilledNand = NandProcessAndCheck(distilledNand.NandDumpFile, distilledNand.KeyFile);
-            //
-            // var infoNew = GetSystemInfo(distilledNand);
-            //
-            // Console.WriteLine("New System Info.");
-            //
-            // Console.WriteLine($"Serial Number: {infoNew["CODE"]}{infoNew["SERNO"]}");
-            // Console.WriteLine($"Region       : {infoNew["AREA"]}");
-            //
-            // Console.WriteLine("Trying to reformat the NAND in memory (no writes to actual NAND).");
-            //
-            // distilledNand.EraseAndReformat();
-            //
-            // distilledNand = NandProcessAndCheck(distilledNand.NandDumpFile, distilledNand.KeyFile);
-
+            var x = new NintendoUpdateServerDownloader();
+            x.GetUpdate(distilledNand.KeyFile);
+            
+            
             var currentRoot = new NandRootNode(distilledNand);
 
             currentRoot.CreateDirectory("/sys");
@@ -117,6 +88,13 @@ namespace Niind
             currentRoot.CreateFile("/tmp/test1.txt", testFile,
                 other: NodePerm.Read);
 
+            currentRoot.CreateFile("/shared1/content.map", Array.Empty<byte>(),
+                other: NodePerm.Read);
+
+            currentRoot.CreateFile("/sys/uid.sys", Array.Empty<byte>(),
+                other: NodePerm.Read);
+
+
             distilledNand = currentRoot.WriteAndCommitToNand();
 
             Console.WriteLine("Checking the reformatted NAND.");
@@ -130,6 +108,13 @@ namespace Niind
             {
                 Console.WriteLine($"Random Test File Verification Success. Hash: {ToHex(h1)}");
             }
+            
+            
+            
+
+            File.WriteAllBytes(
+                "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-test-cleaned.bin",
+                distilledNand.NandDumpFile.CastToArray());
         }
 
 

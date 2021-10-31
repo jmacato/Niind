@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -12,9 +13,17 @@ namespace Niind
 {
     public class NintendoUpdateServerDownloader
     {
+        public List<SharedContentEntry> SharedContentMap = new();
+        public Dictionary<uint, byte[]> SharedContents = new();
+        public List<(TitleMetadataContent, byte[])> DecryptedTitles = new();
+
         public void GetUpdate(KeyFile keyFile)
         {
+            Console.WriteLine("Starting Titles Download from Nintendo Update Servers... ");
+
             using var client = new WebClient();
+
+            uint sharedContentIndex = 0;
 
             client.Headers["User-Agent"] = Constants.UpdaterUserAgent;
 
@@ -62,6 +71,14 @@ namespace Niind
                     Console.WriteLine(
                         $"Decrypting Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index}");
 
+                    if (SharedContentMap.Any(x => x.SHA1.SequenceEqual(contentDescriptor.SHA1)))
+                    {
+                        Console.WriteLine(
+                            $"Skipping Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} since it's on the shared map already.");
+
+                        continue;
+                    }
+
                     var sapd = new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
                     var encryptedContent = client.DownloadData(sapd);
 
@@ -76,10 +93,9 @@ namespace Niind
                         decryptedTitleKey,
                         (int)contentDescriptor.Size,
                         contentIV);
-
-
-                    var decryptedHash = EncryptionHelper.GetSHA1(decryptedContent);
                     
+                    var decryptedHash = EncryptionHelper.GetSHA1(decryptedContent);
+
                     Console.WriteLine($"Received Data Length from NUS: {encryptedContent.Length}");
 
                     if (contentDescriptor.SHA1.SequenceEqual(decryptedHash))
@@ -92,6 +108,21 @@ namespace Niind
                         contentDescriptor.DecryptedContent = decryptedContent;
                         contentDescriptor.DecryptionKey = decryptedTitleKey;
                         contentDescriptor.DecryptionIV = keyIV;
+
+                        if (contentDescriptor.Type == 0x8001)
+                        {
+                            Console.WriteLine(
+                                $"Added decrypted content {EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)} as {sharedContentIndex:X8} in shared content list.");
+                            SharedContents.Add(sharedContentIndex, decryptedContent);
+                            SharedContentMap.Add(new SharedContentEntry(sharedContentIndex, decryptedHash));
+                            sharedContentIndex++;
+                        }
+                        else
+                        {
+                            Console.WriteLine(
+                                $"Added decrypted content as {contentDescriptor.ContentID:X8} on the installed titles list.");
+                            DecryptedTitles.Add((contentDescriptor, decryptedContent));
+                        }
                     }
                     else
                     {

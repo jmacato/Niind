@@ -28,23 +28,32 @@ namespace Niind.Helpers
             return Array.IndexOf(byteArray, byteToFind);
         }
 
-        public static ulong BEToLE_UInt64(byte[] input) =>
-            BitConverter.ToUInt64(input.ToArray().Reverse().ToArray());
 
-        public static uint BEToLE_UInt32(byte[] input) =>
-            BitConverter.ToUInt32(input.ToArray().Reverse().ToArray());
+        public static ushort BA_Swap16(byte[] input) =>
+            BitConverter.ToUInt16(input.Reverse().ToArray());
 
-        public static ushort BEToLE_UInt16(byte[] input) =>
-            BitConverter.ToUInt16(input.ToArray().Reverse().ToArray());
+        public static uint BA_Swap32(byte[] input) =>
+            BitConverter.ToUInt32(input.Reverse().ToArray());
 
-        public static byte[] LEToBE_UInt16(ushort input) =>
+        public static ulong BA_Swap64(byte[] input) =>
+            BitConverter.ToUInt64(input.Reverse().ToArray());
+
+        public static byte[] Swap_BA(ushort input) =>
             BitConverter.GetBytes(input).ToArray().Reverse().ToArray();
 
-        public static byte[] LEToBE_UInt32(uint input) =>
+        public static byte[] Swap_BA(uint input) =>
             BitConverter.GetBytes(input).ToArray().Reverse().ToArray();
-        
-        
-        public static byte[] LEToBE_UInt64(ulong input) =>
+
+        public static byte[] Swap_BA(ulong input) =>
             BitConverter.GetBytes(input).ToArray().Reverse().ToArray();
+
+        public static ushort Swap_Val(ushort input) =>
+            BitConverter.ToUInt16(Swap_BA(input));
+
+        public static uint Swap_Val(uint input) =>
+            BitConverter.ToUInt32(Swap_BA(input));
+
+        public static ulong Swap_Val(ulong input) =>
+            BitConverter.ToUInt64(Swap_BA(input));
     }
 }

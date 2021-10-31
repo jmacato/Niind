@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using Niind.Helpers;
+using static Niind.Helpers.LinqHelper;
 
 namespace Niind.Structures.FileSystem
 {
@@ -77,7 +78,7 @@ namespace Niind.Structures.FileSystem
             return path.Split("/").Where(x => !string.IsNullOrEmpty(x) || !string.IsNullOrWhiteSpace(x));
         }
 
-        public NandFileNode CreateFile(string path, Memory<byte> data, uint userID = 0,
+        public NandFileNode CreateFile(string path, byte[] data, uint userID = 0,
             ushort groupID = 0,
             NodePerm owner = NodePerm.RW, NodePerm group = NodePerm.Read,
             NodePerm other = NodePerm.None)
@@ -227,42 +228,43 @@ namespace Niind.Structures.FileSystem
                 var orderedClusters = new LinkedList<ushort>(file.AllocatedClusters.OrderBy(x => x));
 
                 var cur = orderedClusters.First;
-                var curClusterVal = cur.Value;
-                var clusterIndex = 0;
                 while (cur is not null)
                 {
+                    var curClusterVal = cur.Value;
+
                     var nextCluster = cur.Next;
 
                     if (nextCluster is null)
                     {
-                        superBlockTarget.ClusterEntries[curClusterVal] =
-                            CastingHelper.Swap_Val((ushort)ClusterDescriptor.ChainLast);
+                        superBlockTarget.ClusterEntries[curClusterVal] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.ChainLast);
                     }
                     else
                     {
                         superBlockTarget.ClusterEntries[curClusterVal] = CastingHelper.Swap_Val(nextCluster.Value);
                     }
-
-                    var (block, cluster) =
-                        NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(curClusterVal);
-
-                    var chunkLen = (int)Math.Min(Constants.NandClusterNoSpareByteSize, file.RawData.Length);
-
-                    var chunk = file.RawData.Slice((int)(clusterIndex * Constants.NandClusterNoSpareByteSize),
-                        chunkLen).ToArray();
                     
+                    cur = nextCluster;
+                }
+                
+                uint chunkCounter = 0;
+                
+                foreach (var dataChunk in orderedClusters.ToList()
+                                                         .Zip(file.RawData.Chunk((int)Constants.NandClusterNoSpareByteSize)))
+                {
+                    var (absCluster, data) = dataChunk; 
+                    var (block, cluster) = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(absCluster);
+                    
+                    var chunk = data.ToArray();
+
                     EncryptionHelper.PadByteArrayToMultipleOf(ref chunk, (int)Constants.NandClusterNoSpareByteSize);
                     
                     var targetCluster = _distilledNand.NandDumpFile.Blocks[block].Clusters[cluster];
 
                     targetCluster.WriteDataAsEncrypted(_distilledNand.KeyFile, chunk);
 
-                    RecalculateFileHMAC(fst, _distilledNand.KeyFile, (uint)file.FSTIndex, curClusterVal,
-                        targetCluster);
-                    
-                    clusterIndex++;
+                    RecalculateFileHMAC(fst, _distilledNand.KeyFile, (uint)file.FSTIndex, chunkCounter, targetCluster);
 
-                    cur = nextCluster;
+                    chunkCounter++;
                 }
             }
 

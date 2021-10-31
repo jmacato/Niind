@@ -50,8 +50,7 @@ namespace Niind.Structures.FileSystem
 
             Console.Write("|-");
             indent += "| ";
-
-
+            
             Console.Write(Filename + (IsFile ? "" : "/"));
 
             if (IsFile)

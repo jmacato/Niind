@@ -320,15 +320,14 @@ namespace Niind.Structures.FileSystem
                 if (validClustersLe.Contains(i))
                 {
                     Console.Write($"\rDeleting cluster {clusterDeleted} of {validClustersLe.Count}");
+                    
                     // Mark cluster as free space.
-                    // var old = superBlockTarget.ClusterEntries[i];
                     superBlockTarget.ClusterEntries[i] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.Empty);
-                    // var newx = superBlockTarget.ClusterEntries[i];
-                    //
-                    // // Actually delete the data.
-                    // var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
-                    // var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
-                    // target.EraseData(KeyFile);
+                    
+                    // Actually delete the data.
+                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
+                    var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
+                    target.EraseData(KeyFile);
                     clusterDeleted++;
                 }
             }

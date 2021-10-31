@@ -105,11 +105,19 @@ namespace Niind
             currentRoot.CreateDirectory("/meta", 0x1000, 1, group: NodePerm.RW);
             currentRoot.CreateDirectory("/tmp", group: NodePerm.RW);
 
-            currentRoot.CreateFile("/tmp/test1.txt", Encoding.ASCII.GetBytes("Hello World!").AsMemory(),
-                other: NodePerm.Read);
+            var rndSrc = new Random();
             
-            currentRoot.CreateFile("/tmp/test2.txt", Encoding.ASCII.GetBytes("Hello World 2!").AsMemory(),
+            var testFile = new byte[((int)Constants.NandClusterNoSpareByteSize * 1)];
+            
+            rndSrc.NextBytes(testFile);
+            
+            var h1 = EncryptionHelper.GetSHA1(testFile);
+            
+            currentRoot.CreateFile("/tmp/test1.txt", testFile,
                 other: NodePerm.Read);
+            //
+            // currentRoot.CreateFile("/tmp/test2.txt", Encoding.ASCII.GetBytes("Hello World 2!").AsMemory(),
+            //     other: NodePerm.Read);
 
             distilledNand = currentRoot.WriteAndCommitToNand();
 
@@ -117,21 +125,24 @@ namespace Niind
 
             distilledNand .NandProcessAndCheck();
 
-            Console.WriteLine($"{Encoding.ASCII.GetString(GetFileContent(distilledNand, "test1.txt"))}");
-            Console.WriteLine($"{Encoding.ASCII.GetString(GetFileContent(distilledNand, "test2.txt"))}");
+            var retTestFile = GetFileContent(distilledNand, "test1.txt");
+            var h2 = EncryptionHelper.GetSHA1(retTestFile);
             
-            File.WriteAllBytes("test2.bin", distilledNand.NandDumpFile.CastToArray());
+            if (h1.SequenceEqual(h2))
+            {
+                Console.WriteLine($"Random Test File Verification Success. Hash: {ToHex(h1)}");
+            }
         }
 
 
          static byte[] GetFileContent(DistilledNand distilledNand, string filename)
         {
-            var xww = distilledNand.RootNode
+            var rawNode = distilledNand.RootNode
                 .GetDescendants().FirstOrDefault(x => x.Filename == filename);
 
-            if (xww is null) return Array.Empty<byte>();
+            if (rawNode is null) return Array.Empty<byte>();
 
-            var encData = xww.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+            var encData = rawNode.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
             return encData;
         }
 

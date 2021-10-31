@@ -96,8 +96,9 @@ namespace Niind.Structures.FileSystem
             newFile.UserID = userID;
             newFile.GroupID = groupID;
 
-            var clustersNeeded = Math.Max(1, (int)(data.Length / Constants.NandClusterNoSpareByteSize));
-
+            int pad = (int)Constants.NandClusterNoSpareByteSize;
+            var clustersNeeded = (data.Length + pad - 1) / pad;
+            
             var fileClusters = _distilledNand
                 .ValidClusters
                 .Where(x => (ClusterDescriptor)x.Value == ClusterDescriptor.Empty &&

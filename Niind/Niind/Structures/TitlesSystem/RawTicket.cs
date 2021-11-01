@@ -33,7 +33,7 @@ namespace Niind.Structures.TitlesSystem
         public byte[] ConsoleID;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x008)]
-        public byte[] TitleID_KeyIV;
+        public byte[] TitleID;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x002)]
         public byte[] Padding2;

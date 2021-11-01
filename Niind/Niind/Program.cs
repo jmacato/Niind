@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Niind.Helpers;
 using Niind.Structures.FileSystem;
 
@@ -13,7 +14,7 @@ namespace Niind
 {
     internal class Program
     {
-        private static void Main(string[] args)
+        private static async Task Main(string[] args)
         {
             
             Console.WriteLine("Loading Files...");
@@ -62,7 +63,7 @@ namespace Niind
  
 
             var x = new NintendoUpdateServerDownloader();
-            x.GetUpdate(distilledNand.KeyFile);
+            await x.GetUpdateAsync(distilledNand.KeyFile);
             
             
             var currentRoot = new NandRootNode(distilledNand);

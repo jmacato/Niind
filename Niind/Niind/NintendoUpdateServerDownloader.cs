@@ -1,10 +1,14 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Niind.Helpers;
 using Niind.Structures.FileSystem;
 using Niind.Structures.TitlesSystem;
@@ -13,126 +17,200 @@ namespace Niind
 {
     public class NintendoUpdateServerDownloader
     {
-        public List<SharedContentEntry> SharedContentMap = new();
-        public Dictionary<uint, byte[]> SharedContents = new();
-        public List<(TitleMetadataContent, byte[])> DecryptedTitles = new();
+        public ConcurrentBag<SharedContent> SharedContents = new();
+        public ConcurrentBag<TitleMetadataContent> DecryptedTitles = new();
+        private static object lockObj = new();
+        private string CachePathName = Path.Combine(Path.GetTempPath(), "niind_nus_cache");
 
-        public void GetUpdate(KeyFile keyFile)
+        static readonly HttpClient client = new();
+
+        public async Task GetUpdateAsync(KeyFile keyFile)
         {
-            Console.WriteLine("Starting Titles Download from Nintendo Update Servers... ");
-
-            using var client = new WebClient();
-
-            uint sharedContentIndex = 0;
-
-            client.Headers["User-Agent"] = Constants.UpdaterUserAgent;
-
-            foreach (var titles in Constants.Version4_3U_Titles)
+            if (!Directory.Exists(CachePathName))
             {
+                Directory.CreateDirectory(CachePathName);
+            }
+
+            Console.WriteLine("Starting Titles Download from Nintendo Update Servers...");
+            
+            client.DefaultRequestHeaders.Clear();
+            client.DefaultRequestHeaders.Add("User-Agent", Constants.UpdaterUserAgent);
+
+            await Constants.Version4_3U_Titles.ParallelForEachAsync(async titles =>
+            {
+                var logOutput = "";
                 var titleID = $"{titles.TicketID:X16}";
                 var tmdVersion = $"tmd.{titles.Version}";
 
-                Console.WriteLine($"Downloading Title Ticket for {titleID}v{titles.Version}");
+                var tikFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleID}")}.tik";
 
-                var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
-                var rawTicket = client.DownloadData(downloadCetkUri).CastToStruct<RawTicket>();
+                RawTicket rawTicket;
+                if (File.Exists(tikFile))
+                {
+                    logOutput += $"Getting Title Ticket for {titleID}v{titles.Version} from cache folder.\n";
+                    rawTicket = (await File.ReadAllBytesAsync(tikFile)).CastToStruct<RawTicket>();
+                }
+                else
+                {
+                    logOutput += $"Downloading Title Ticket for {titleID}v{titles.Version}\n";
+                    var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
+                    var downloadedTicket = await client.GetByteArrayAsync(downloadCetkUri);
+                    rawTicket = downloadedTicket.CastToStruct<RawTicket>();
+                    await File.WriteAllBytesAsync(tikFile, downloadedTicket);
+                    logOutput += $"Saved Title Ticket to cache folder.\n";
+                }
 
                 var issuer = Encoding.ASCII.GetString(rawTicket.Issuer).Trim(char.MinValue);
 
                 if (rawTicket.CommonKeyIndex[0] != 0)
                 {
-                    Console.WriteLine(
-                        $"Expected Common Key Index to be 0 for {titleID}v{titles.Version} but got {rawTicket.CommonKeyIndex[0]}. Skipping.");
-                    continue;
+                    logOutput +=
+                        $"Expected Common Key Index to be 0 for {titleID}v{titles.Version} but got {rawTicket.CommonKeyIndex[0]}. Skipping." +
+                        "\n";
+                    return;
                 }
 
-                Console.WriteLine("Downloading Title Metadata. ");
+                var tmdFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleID}")}.tmd";
+                TitleMetadata decodedTmd;
 
-                var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
-                var decodedTmd = TitleMetadata.FromByteArray(client.DownloadData(downloadTmdUri));
+                if (File.Exists(tmdFile))
+                {
+                    logOutput += $"Getting Title Metadata for {titleID}v{titles.Version} from cache folder.\n";
+                    decodedTmd = TitleMetadata.FromByteArray(await File.ReadAllBytesAsync(tmdFile));
+                }
+                else
+                {
+                    logOutput += $"Downloading Title Metadata for {titleID}v{titles.Version}. \n";
 
-                var keyIV = rawTicket.TitleID_KeyIV;
+                    var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
+                    var downloadedTmd = await client.GetByteArrayAsync(downloadTmdUri);
+                    decodedTmd = TitleMetadata.FromByteArray(downloadedTmd);
+                    await File.WriteAllBytesAsync(tmdFile, downloadedTmd);
+                    logOutput += "Saved Title Metadata to cache folder. \n";
+                }
+
+                var keyIV = rawTicket.TitleID;
                 EncryptionHelper.PadByteArrayToMultipleOf(ref keyIV, 0x10);
 
                 var decryptedTitleKey = EncryptionHelper.AESDecrypt(rawTicket.TitleKeyEnc, keyFile.CommonKey,
                     rawTicket.TitleKeyEnc.Length, keyIV);
 
-                Console.WriteLine(
-                    "Title Key Encrypted: " + EncryptionHelper.ByteArrayToHexString(rawTicket.TitleKeyEnc));
-                Console.WriteLine(
-                    "Title Key Common Key: " + EncryptionHelper.ByteArrayToHexString(keyFile.CommonKey));
-                Console.WriteLine(
-                    "Title Key IV: " + EncryptionHelper.ByteArrayToHexString(keyIV));
-                Console.WriteLine(
-                    "Title Key Decrypted: " + EncryptionHelper.ByteArrayToHexString(decryptedTitleKey));
+                logOutput +=
+                    "Title Key Encrypted : " + EncryptionHelper.ByteArrayToHexString(rawTicket.TitleKeyEnc) + "\n";
+                logOutput +=
+                    "Title Key Common Key: " + EncryptionHelper.ByteArrayToHexString(keyFile.CommonKey) + "\n";
+                logOutput +=
+                    "Title Key IV        : " + EncryptionHelper.ByteArrayToHexString(keyIV) + "\n";
+                logOutput +=
+                    "Title Key Decrypted : " + EncryptionHelper.ByteArrayToHexString(decryptedTitleKey) + "\n";
 
-                foreach (var contentDescriptor in decodedTmd.ContentDescriptors)
+                await decodedTmd.ContentDescriptors.ParallelForEachAsync(async contentDescriptor =>
                 {
-                    Console.WriteLine(
-                        $"Decrypting Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index}");
-
-                    if (SharedContentMap.Any(x => x.SHA1.SequenceEqual(contentDescriptor.SHA1)))
+                    lock (lockObj)
                     {
-                        Console.WriteLine(
-                            $"Skipping Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} since it's on the shared map already.");
+                        if (SharedContents.Any(x => x.SHA1.SequenceEqual(contentDescriptor.SHA1)))
+                        {
+                            logOutput +=
+                                $"Skipping Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} since it's on the shared map already.\n";
 
-                        continue;
+                            return;
+                        }
                     }
 
-                    var sapd = new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
-                    var encryptedContent = client.DownloadData(sapd);
+                    var contentFileName =
+                        $"{CachePathName}/{EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)}.app";
 
-                    EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
+                    byte[] decryptedHash;
+                    byte[] decryptedContent;
 
-                    var contentIV = CastingHelper.Swap_BA(contentDescriptor.Index);
+                    if (File.Exists(contentFileName))
+                    {
+                        logOutput +=
+                            $"Getting Decrypted Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} from cache folder.\n";
+                        decryptedContent = await File.ReadAllBytesAsync(contentFileName);
+                        decryptedHash = EncryptionHelper.GetSHA1(decryptedContent);
+                    }
+                    else
+                    {
+                        logOutput +=
+                            $"Downloading Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} from NUS.\n";
 
-                    EncryptionHelper.PadByteArrayToMultipleOf(ref contentIV, 0x10);
+                        var contentUri =
+                            new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
+                        var encryptedContent = await client.GetByteArrayAsync(contentUri);
 
-                    var decryptedContent = EncryptionHelper.AESDecrypt(
-                        encryptedContent,
-                        decryptedTitleKey,
-                        (int)contentDescriptor.Size,
-                        contentIV);
-                    
-                    var decryptedHash = EncryptionHelper.GetSHA1(decryptedContent);
+                        EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
 
-                    Console.WriteLine($"Received Data Length from NUS: {encryptedContent.Length}");
+                        var contentIV = CastingHelper.Swap_BA(contentDescriptor.Index);
+
+                        EncryptionHelper.PadByteArrayToMultipleOf(ref contentIV, 0x10);
+
+                        decryptedContent = EncryptionHelper.AESDecrypt(
+                            encryptedContent,
+                            decryptedTitleKey,
+                            (int)contentDescriptor.Size,
+                            contentIV);
+
+                        logOutput +=
+                            $"Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} Decrypted.\n";
+
+                        decryptedHash = EncryptionHelper.GetSHA1(decryptedContent);
+                        logOutput += $"Received Data Length from NUS: {encryptedContent.Length}\n";
+                        logOutput += $"Decrypted Length: {decryptedContent.Length}\n";
+                        logOutput += $"Length Delta: {decryptedContent.Length - encryptedContent.Length}\n";
+
+                        await File.WriteAllBytesAsync(contentFileName, decryptedContent);
+
+                        logOutput +=
+                            $"Saved Decrypted Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} to cache folder.\n";
+                    }
+
 
                     if (contentDescriptor.SHA1.SequenceEqual(decryptedHash))
                     {
-                        Console.WriteLine("Hash Matched with Title Metadata: " +
-                                          EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
-                        Console.WriteLine($"Decrypted Length: {decryptedContent.Length}");
-                        Console.WriteLine($"Length Delta: {decryptedContent.Length - encryptedContent.Length}");
+                        logOutput += "Hash Matched with Title Metadata: " +
+                                     EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1) + "\n";
 
+                        contentDescriptor.ParentTMD = decodedTmd;
+                        contentDescriptor.Ticket = rawTicket;
                         contentDescriptor.DecryptedContent = decryptedContent;
                         contentDescriptor.DecryptionKey = decryptedTitleKey;
                         contentDescriptor.DecryptionIV = keyIV;
 
                         if (contentDescriptor.Type == 0x8001)
                         {
-                            Console.WriteLine(
-                                $"Added decrypted content {EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)} as {sharedContentIndex:X8} in shared content list.");
-                            SharedContents.Add(sharedContentIndex, decryptedContent);
-                            SharedContentMap.Add(new SharedContentEntry(sharedContentIndex, decryptedHash));
-                            sharedContentIndex++;
+                            logOutput +=
+                                $"Added decrypted content {EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)} in shared content list.\n";
+
+                            SharedContents.Add(new SharedContent( decryptedHash, decryptedContent));
                         }
                         else
                         {
-                            Console.WriteLine(
-                                $"Added decrypted content as {contentDescriptor.ContentID:X8} on the installed titles list.");
-                            DecryptedTitles.Add((contentDescriptor, decryptedContent));
+                            logOutput +=
+                                $"Added decrypted content as {decodedTmd.Header.TitleID:X16}/{contentDescriptor.ContentID:X8} on the installed titles list.\n";
+                            DecryptedTitles.Add(contentDescriptor);
                         }
                     }
                     else
                     {
-                        Console.WriteLine("Hash did not match! Skipping this title..");
-                        Console.WriteLine("Expected Hash: " +
-                                          EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1));
-                        Console.WriteLine("Got Hash     : " + EncryptionHelper.ByteArrayToHexString(decryptedHash));
+                        logOutput += "Hash did not match! Skipping this title..\n";
+                        logOutput += "Expected Hash: " +
+                                     EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1) + "\n";
+                        logOutput += "Got Hash     : " + EncryptionHelper.ByteArrayToHexString(decryptedHash) + "\n";
                     }
-                }
-            }
+                });
+
+                Console.WriteLine(logOutput);
+            });
+            
+            
+            // this is so inefficient...
+            SharedContents = new ConcurrentBag<SharedContent>(SharedContents
+                .GroupBy(x => EncryptionHelper.ByteArrayToHexString(x.SHA1))
+                .Select(g => g.First()).ToList());
+            
+            
+            Console.WriteLine("Done Downloading from Nintendo Update Servers...");
         }
     }
 }

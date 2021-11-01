@@ -1,30 +1,10 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Niind.Helpers
 {
-    public static class LinqHelper
-    {
-        public static IEnumerable<IEnumerable<byte>> Chunk(this byte[] fullList, int batchSize)
-        {
-            var total = 0;
-            while (total < fullList.LongLength)
-            {
-                yield return fullList.Skip(total).Take(batchSize).ToArray();
-                total += batchSize;
-            }
-        }
-        public static IEnumerable<TResult> ZipMany<T, TResult>(this IEnumerable<T>[] sequences, Func<T[], TResult> resultSelector)
-        {
-            var enumerators = sequences.Select(s => s.GetEnumerator()).ToArray();
-            while(enumerators.All(e => e.MoveNext()))
-                yield return resultSelector(enumerators.Select(e => e.Current).ToArray());
-        } 
-    }
-
     public static class CastingHelper
     {
         public static T CastToStruct<T>(this byte[] data) where T : struct

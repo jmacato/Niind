@@ -16,7 +16,6 @@ namespace Niind
     {
         private static async Task Main(string[] args)
         {
-            
             Console.WriteLine("Loading Files...");
             
             var rawFullDump =
@@ -29,7 +28,14 @@ namespace Niind
                 File.ReadAllBytes(
                     "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
 
-            Console.WriteLine("Key File Loaded.");
+            //
+            // var rawFullDump = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand.bin");
+            //
+            // Console.WriteLine("Nand File Loaded.");
+            //
+            // var rawKeyFile = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/keys.bin");
+            //
+            // Console.WriteLine("Key File Loaded.");
 
             var nandData = rawFullDump.CastToStruct<NandDumpFile>();
 
@@ -54,18 +60,22 @@ namespace Niind
                 throw new InvalidOperationException("The Key File provided is not for this specific NAND dump.");
 
             Console.WriteLine("Key file matches the NAND dump.");
-            
-            
-            
-            
+
 
             var distilledNand = new DistilledNand(nandData, keyData);
- 
 
-            var x = new NintendoUpdateServerDownloader();
+            foreach (var kvp in GetSystemInfo(distilledNand))
+            {
+                Console.WriteLine("Key = {0}, Value = {1}", kvp.Key, kvp.Value);
+            }
+
+
+            var x = new NUSDownloader();
             await x.GetUpdateAsync(distilledNand.KeyFile);
-            
-            
+
+            var t = GenerateShared1(x);
+
+
             var currentRoot = new NandRootNode(distilledNand);
 
             currentRoot.CreateDirectory("/sys");
@@ -109,9 +119,7 @@ namespace Niind
             {
                 Console.WriteLine($"Random Test File Verification Success. Hash: {ToHex(h1)}");
             }
-            
-            
-            
+
 
             File.WriteAllBytes(
                 "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-test-cleaned.bin",
@@ -148,6 +156,58 @@ namespace Niind
         }
 
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RawContentMapEntry
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x4)]
+            public byte[] SharedId;
+
+            public uint unknown;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
+            public byte[] SHA1;
+
+            public RawContentMapEntry(uint index, byte[] sha1)
+            {
+                SharedId = CastingHelper.Swap_BA(index);
+                SHA1 = sha1;
+                unknown = 0;
+            }
+        }
+ 
+
+
+        private static (byte[] rawContentMap, List<(string fileName, byte[] content)> fileNames) GenerateShared1(
+            NUSDownloader nusDownloader)
+        {
+            var folder = new List<(string fileName, byte[] content)>();
+            
+            var contentMapList = new List<RawContentMapEntry>();
+
+            foreach (var vt in nusDownloader.SharedContents.Zip(Enumerable.Range(0,
+                         nusDownloader.SharedContents.Count)))
+            {
+                var index = (uint)vt.Second;
+                var sha1 = vt.First.SHA1;
+                var content = vt.First.Content;
+
+                var fileName = $"{index:X8}";
+
+                folder.Add((fileName, content));
+                contentMapList.Add(new RawContentMapEntry(index, sha1));
+            }
+
+            var rawCM = new List<byte>();
+
+            foreach (var rawEntry in contentMapList.Select(tx => tx.CastToArray()))
+            {
+                rawCM.AddRange(rawEntry);
+            }
+ 
+            return (rawCM.ToArray(), folder);
+        }
+
+
         private static void SetSystemInfo(
             DistilledNand distilledNand, Dictionary<string, string> setting)
         {
@@ -180,6 +240,25 @@ namespace Niind
             }
 
             rawtxt = buffer.ToArray();
+        }
+
+        public static string StringFormat(string format, IDictionary<string, object> values)
+        {
+            var matches = Regex.Matches(format, @"\{(.+?)\}");
+            List<string> words = (from Match matche in matches select matche.Groups[1].Value).ToList();
+
+            return words.Aggregate(
+                format,
+                (current, key) =>
+                {
+                    int colonIndex = key.IndexOf(':');
+                    return current.Replace(
+                        "{" + key + "}",
+                        colonIndex > 0
+                            ? string.Format("{0:" + key.Substring(colonIndex + 1) + "}",
+                                values[key.Substring(0, colonIndex)])
+                            : values[key].ToString());
+                });
         }
 
         private static string ToHex(byte[] inx)

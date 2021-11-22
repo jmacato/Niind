@@ -264,23 +264,18 @@ namespace Niind
 
         static SemaphoreSlim sem = new SemaphoreSlim(1, 16);
 
-        private byte[] GetUri(Uri downloadTmdUri)
+        private byte[] GetUri(Uri uri)
         {
             sem.Wait();
-            // Thread.Sleep(1000);
-
-            // Console.WriteLine($"Download start {counter}");
-            var x = GetValue(downloadTmdUri);
-            // Console.WriteLine($"Download end {counter}");
-            // counter += 1;
-            sem.Release();
-            return x;
-        }
-
-
-        byte[] GetValue(Uri s)
-        {
-            return clientx.DownloadData(s);
+            try
+            {
+                var x = clientx.DownloadData(uri);
+                return x;
+            }
+            finally
+            {
+                sem.Release();
+            }
         }
     }
 }

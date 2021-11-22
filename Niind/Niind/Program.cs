@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml.Schema;
 using Niind.Helpers;
 using Niind.Structures.FileSystem;
 
@@ -59,24 +61,60 @@ namespace Niind
             }
 
 
-            var x = new NintendoUpdateServerDownloader();
-            await x.GetUpdateAsync(distilledNand.KeyFile);
-            
-            var t = GenerateShared1(x);
+            var nus = new NintendoUpdateServerDownloader();
+            await nus.GetUpdateAsync(distilledNand.KeyFile);
+
+            var generateShared1 = GenerateShared1(nus);
 
             var nandErrRaw = distilledNand.RootNode.GetFile("/shared2/test2/nanderr.log")
                 ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+
             var certSysRawNode = distilledNand.RootNode.GetFile("/sys/cert.sys");
-            
+
             var certSysRaw = certSysRawNode
                 ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
-            
+
+            var contentMapRawNode = distilledNand.RootNode.GetFile("/shared1/content.map");
+
+            var contentMapRaw = contentMapRawNode
+                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+
+            foreach (var contentMapItem in contentMapRaw.Chunk(28).Select(x => x.ToArray()))
+            {
+                if (contentMapItem.Length != 28)
+                {
+                    break;
+                }
+
+                var desc = contentMapItem.CastToStruct<RawContentMapEntry>();
+                var sharedId = Encoding.ASCII.GetString(desc.SharedId);
+                var testShared1RawNode =
+                    distilledNand.RootNode.GetFile($"/shared1/{sharedId}.app");
+
+                if (testShared1RawNode is null)
+                {
+                    continue;
+                }
+
+                var testShared1Raw =
+                    testShared1RawNode.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+
+                var sha1 = EncryptionHelper.GetSHA1(testShared1Raw);
+
+                if (sha1.SequenceEqual(desc.SHA1))
+                {
+                    Console.WriteLine($"Shared Content {sharedId}.app hash matches the one in content.map.");
+                }
+            }
+
+
             var nandErrLogContent = Encoding.ASCII.GetString(nandErrRaw).Trim();
-            var aw = EncryptionHelper.GetSHA1String(certSysRaw);
-            
+            var certSysRawSha1String = EncryptionHelper.GetSHA1String(certSysRaw);
+
             Console.WriteLine($"nanderr.log content {nandErrLogContent}");
-            Console.WriteLine($"cert.sys SHA1 {aw}");
-            var certSysValid = aw == Constants.ReferenceCertSysSHA1;
+            Console.WriteLine($"cert.sys SHA1 {certSysRawSha1String}");
+
+            var certSysValid = certSysRawSha1String == Constants.ReferenceCertSysSHA1;
             Console.WriteLine($"cert.sys in nand is valid : {certSysValid}");
 
             var currentRoot = new NandRootNode(distilledNand);
@@ -102,16 +140,25 @@ namespace Niind
             currentRoot.CreateFile("/tmp/test1.txt", testFile,
                 other: NodePerm.Read);
 
-            currentRoot.CreateFile("/shared1/content.map", Array.Empty<byte>(),
-                other: NodePerm.Read);
-
             currentRoot.CreateFile("/sys/uid.sys", Array.Empty<byte>(),
                 other: NodePerm.Read);
 
             currentRoot.CreateFile("/sys/cert.sys", certSysRaw,
-                other: NodePerm.Read, 
+                other: NodePerm.Read,
                 group: NodePerm.RW);
 
+            currentRoot.CreateFile("/shared1/content.map", generateShared1.rawContentMap,
+                other: NodePerm.None,
+                group: NodePerm.RW,
+                owner: NodePerm.RW);
+
+            foreach (var sharedApps in generateShared1.fileNames)
+            {
+                currentRoot.CreateFile($"/shared1/{sharedApps.fileName}", sharedApps.content,
+                    other: NodePerm.None,
+                    group: NodePerm.RW,
+                    owner: NodePerm.RW);
+            }
 
             distilledNand = currentRoot.WriteAndCommitToNand();
 
@@ -119,7 +166,8 @@ namespace Niind
 
             distilledNand.NandProcessAndCheck();
 
-            var retTestFile = distilledNand.RootNode.GetFile("/tmp/test1.txt").GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+            var retTestFile = distilledNand.RootNode.GetFile("/tmp/test1.txt")
+                .GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
             var h2 = EncryptionHelper.GetSHA1(retTestFile);
 
             if (h1.SequenceEqual(h2))
@@ -165,19 +213,16 @@ namespace Niind
         [StructLayout(LayoutKind.Sequential)]
         private struct RawContentMapEntry
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x4)]
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x8)]
             public byte[] SharedId;
-
-            public uint unknown;
 
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
             public byte[] SHA1;
 
             public RawContentMapEntry(uint index, byte[] sha1)
             {
-                SharedId = CastingHelper.Swap_BA(index);
+                SharedId = Encoding.ASCII.GetBytes($"{index:X8}");
                 SHA1 = sha1;
-                unknown = 0;
             }
         }
 
@@ -196,7 +241,7 @@ namespace Niind
                 var sha1 = vt.First.SHA1;
                 var content = vt.First.Content;
 
-                var fileName = $"{index:X8}";
+                var fileName = $"{index:X8}.app";
 
                 folder.Add((fileName, content));
                 contentMapList.Add(new RawContentMapEntry(index, sha1));

@@ -17,25 +17,14 @@ namespace Niind
         private static async Task Main(string[] args)
         {
             Console.WriteLine("Loading Files...");
-            
-            var rawFullDump =
-                File.ReadAllBytes(
-                    "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb copy 2.bin");
+
+            var rawFullDump = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand.bin");
 
             Console.WriteLine("Nand File Loaded.");
 
-            var rawKeyFile =
-                File.ReadAllBytes(
-                    "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
+            var rawKeyFile = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/keys.bin");
 
-            //
-            // var rawFullDump = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand.bin");
-            //
-            // Console.WriteLine("Nand File Loaded.");
-            //
-            // var rawKeyFile = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/keys.bin");
-            //
-            // Console.WriteLine("Key File Loaded.");
+            Console.WriteLine("Key File Loaded.");
 
             var nandData = rawFullDump.CastToStruct<NandDumpFile>();
 
@@ -70,11 +59,25 @@ namespace Niind
             }
 
 
-            var x = new NUSDownloader();
-            await x.GetUpdateAsync(distilledNand.KeyFile);
+            // var x = new NintendoUpdateServerDownloader();
+            // await x.GetUpdateAsync(distilledNand.KeyFile);
+            //
+            // var t = GenerateShared1(x);
 
-            var t = GenerateShared1(x);
-
+            var nandErrRaw = distilledNand.RootNode.GetFile("/shared2/test2/nanderr.log")
+                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+            var certSysRawNode = distilledNand.RootNode.GetFile("/sys/cert.sys");
+            
+            var certSysRaw = certSysRawNode
+                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
+            
+            var nandErrLogContent = Encoding.ASCII.GetString(nandErrRaw).Trim();
+            var aw = EncryptionHelper.GetSHA1String(certSysRaw);
+            
+            Console.WriteLine($"nanderr.log content {nandErrLogContent}");
+            Console.WriteLine($"cert.sys SHA1 {aw}");
+            var certSysValid = aw == Constants.ReferenceCertSysSHA1;
+            Console.WriteLine($"cert.sys in nand is valid : {certSysValid}");
 
             var currentRoot = new NandRootNode(distilledNand);
 
@@ -105,6 +108,10 @@ namespace Niind
             currentRoot.CreateFile("/sys/uid.sys", Array.Empty<byte>(),
                 other: NodePerm.Read);
 
+            currentRoot.CreateFile("/sys/cert.sys", certSysRaw,
+                other: NodePerm.Read, 
+                group: NodePerm.RW);
+
 
             distilledNand = currentRoot.WriteAndCommitToNand();
 
@@ -112,7 +119,7 @@ namespace Niind
 
             distilledNand.NandProcessAndCheck();
 
-            var retTestFile = GetFileContent(distilledNand, "test1.txt");
+            var retTestFile = distilledNand.RootNode.GetFile("/tmp/test1.txt").GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);
             var h2 = EncryptionHelper.GetSHA1(retTestFile);
 
             if (h1.SequenceEqual(h2))
@@ -140,8 +147,7 @@ namespace Niind
 
         private static Dictionary<string, string>? GetSystemInfo(DistilledNand distilledNand)
         {
-            var xww = distilledNand.RootNode
-                .GetDescendants().FirstOrDefault(x => x.Filename == "setting.txt");
+            var xww = distilledNand.RootNode.GetFile("/title/00000001/00000002/data/setting.txt");
 
             if (xww is null) return null;
 
@@ -174,14 +180,13 @@ namespace Niind
                 unknown = 0;
             }
         }
- 
 
 
         private static (byte[] rawContentMap, List<(string fileName, byte[] content)> fileNames) GenerateShared1(
-            NUSDownloader nusDownloader)
+            NintendoUpdateServerDownloader nusDownloader)
         {
             var folder = new List<(string fileName, byte[] content)>();
-            
+
             var contentMapList = new List<RawContentMapEntry>();
 
             foreach (var vt in nusDownloader.SharedContents.Zip(Enumerable.Range(0,
@@ -203,7 +208,7 @@ namespace Niind
             {
                 rawCM.AddRange(rawEntry);
             }
- 
+
             return (rawCM.ToArray(), folder);
         }
 
@@ -211,8 +216,7 @@ namespace Niind
         private static void SetSystemInfo(
             DistilledNand distilledNand, Dictionary<string, string> setting)
         {
-            var xww = distilledNand.RootNode
-                .GetDescendants().FirstOrDefault(x => x.Filename == "setting.txt");
+            var xww = distilledNand.RootNode.GetFile("/title/00000001/00000002/data/setting.txt");
 
             var k = string.Join("", setting.Select(x => $"{x.Key}={x.Value}\r\n"));
             var h = Encoding.ASCII.GetBytes(k);

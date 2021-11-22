@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Niind.Helpers;
 
 namespace Niind.Structures.FileSystem
@@ -15,14 +16,14 @@ namespace Niind.Structures.FileSystem
         public RawFileSystemNode RootNode;
         public NandDumpFile NandDumpFile;
         public KeyFile KeyFile;
-        
+
         public DistilledNand(NandDumpFile nandDumpFile, KeyFile keyFile)
         {
             NandDumpFile = nandDumpFile;
             KeyFile = keyFile;
             NandProcessAndCheck();
         }
-        
+
         public void NandProcessAndCheck()
         {
             var foundSuperblocks = new List<SuperBlockDescriptor>();
@@ -191,11 +192,11 @@ namespace Niind.Structures.FileSystem
                     newFile.Clusters.Add(startingCluster);
 
                     var nextCluster = startingCluster;
-                    
+
                     var pad = (int)Constants.NandClusterNoSpareByteSize;
-                    
+
                     var estimatedClusterCount = (rFST.FileSize + pad - 1) / pad;
-                    
+
                     var watchdogCounter = 0x0;
 
                     while (watchdogCounter < estimatedClusterCount && rFST.FileSize > 0)
@@ -255,7 +256,7 @@ namespace Niind.Structures.FileSystem
                 var file = entry.Value;
 
                 if (!file.IsFile) continue;
-                if (file.FSTEntry.FileSize == 0) 
+                if (file.FSTEntry.FileSize == 0)
                     continue;
 
                 var saltF = new byte[0x40];
@@ -318,25 +319,26 @@ namespace Niind.Structures.FileSystem
             var validClustersLe = ValidClusters.Keys;
             var clusterDeleted = 0;
 
-            // Erase all used clusters.
-            for (ushort i = 0; i < superBlockTarget.ClusterEntries.Length; i++)
-            {
-                if (validClustersLe.Contains(i))
-                {
-                    Console.Write($"\rDeleting cluster {clusterDeleted} of {validClustersLe.Count}");
-                    
-                    // Mark cluster as free space.
-                    superBlockTarget.ClusterEntries[i] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.Empty);
-                    
-                    // Actually delete the data.
-                    var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
-                    var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
-                    target.EraseData(KeyFile);
-                    clusterDeleted++;
-                }
-            }
 
-            Console.WriteLine("Cluster deletion complete.");
+            Enumerable.Range(0, superBlockTarget.ClusterEntries.Length).Select(x => (ushort)x).ParallelForEachAsync(
+                async i =>
+                {
+                    if (validClustersLe.Contains(i))
+                    {
+                        Console.Write($"\rDeleting cluster {clusterDeleted} of {validClustersLe.Count}");
+
+                        // Mark cluster as free space.
+                        superBlockTarget.ClusterEntries[i] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.Empty);
+
+                        // Actually delete the data.
+                        var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
+                        var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
+                        target.EraseData(KeyFile);
+                        clusterDeleted++;
+                    }
+                }).GetAwaiter().GetResult();
+            Console.WriteLine("\r");
+            Console.WriteLine("Cluster deletion complete.                 ");
             Console.WriteLine("Purging Filesystem Entries except for root.");
 
             var emptyFST = Constants.EmptyFST.CastToStruct<RawFileSystemTableEntry>();
@@ -370,7 +372,7 @@ namespace Niind.Structures.FileSystem
                     var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(
                         (uint)(curCluster + i));
                     var chunk = rawSB.AsSpan().Slice(i * (int)Constants.NandClusterNoSpareByteSize,
-                        (int)Constants.NandClusterNoSpareByteSize);
+                        (int)Constants.NandClusterNoSpareByteSize).ToArray();
 
                     NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster]
                         .WriteData(chunk.ToArray());

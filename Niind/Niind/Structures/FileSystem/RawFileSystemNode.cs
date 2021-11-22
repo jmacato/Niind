@@ -32,6 +32,45 @@ namespace Niind.Structures.FileSystem
             return mm.ToArray().AsSpan(0, (int)FSTEntry.FileSize).ToArray();
         }
 
+
+        public RawFileSystemNode? GetFile(string path)
+        {
+            if (Filename != "/") return null;
+
+            Queue<RawFileSystemNode> q = new();
+            Queue<string> pn = new Queue<string>(path.Split("/")
+                .Where(x => !string.IsNullOrEmpty(x)).ToList());
+
+            q.Enqueue(this);
+
+            var currentPathNodeName = pn.Dequeue();
+
+            while (q.Count != 0)
+            {
+                var current = q.Dequeue();
+                
+                foreach (var childNode in current.Children)
+                {
+                    if (childNode.Filename == currentPathNodeName)
+                    {
+                        if (pn.Count == 0 && childNode.IsFile)
+                        {
+                            q.Clear();
+                            pn.Clear();
+                            return childNode;
+                        }
+
+                        currentPathNodeName = pn.Dequeue();
+                    }
+
+                    q.Enqueue(childNode);
+                }
+            }
+
+            return null;
+        }
+
+
         public IEnumerable<RawFileSystemNode> GetDescendants()
         {
             foreach (var child in Children)
@@ -50,7 +89,7 @@ namespace Niind.Structures.FileSystem
 
             Console.Write("|-");
             indent += "| ";
-            
+
             Console.Write(Filename + (IsFile ? "" : "/"));
 
             if (IsFile)

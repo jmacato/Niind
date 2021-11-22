@@ -21,7 +21,8 @@ namespace Niind
         public static readonly ushort SuperBlocksEndCluster = 0x7FFF;
         public static readonly ushort SuperBlocksClusterIncrement = 0x10;
         public static readonly uint FSTSubEndCapValue = uint.MaxValue;
-
+        public static readonly string ReferenceCertSysSHA1 = "E508784DE7C84AD790036E655E2079C9074EB372";
+        
         public static byte[] EmptyFST = new byte[0x20];
         public static byte[] EmptyPageRawData = new byte[NandPageNoSpareByteSize];
         public static byte[] SuperBlockHeader = Encoding.ASCII.GetBytes("SFFS");

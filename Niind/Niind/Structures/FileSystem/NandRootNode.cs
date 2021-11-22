@@ -76,6 +76,43 @@ namespace Niind.Structures.FileSystem
             return path.Split("/").Where(x => !string.IsNullOrEmpty(x) || !string.IsNullOrWhiteSpace(x));
         }
 
+        
+        public NandFileNode? GetFile(string path)
+        {
+            Queue<NandNode> q = new();
+            Queue<string> pn = new Queue<string>(path.Split("/")
+                .Where(x => !string.IsNullOrEmpty(x)).ToList());
+
+            q.Enqueue(this);
+
+            var currentPathNodeName = pn.Dequeue();
+
+            while (q.Count != 0)
+            {
+                var current = q.Dequeue();
+                
+                foreach (var childNode in current.Children)
+                {
+                    if (childNode.FileName == currentPathNodeName)
+                    {
+                        if (pn.Count == 0 && childNode is NandFileNode res)
+                        {
+                            q.Clear();
+                            pn.Clear();
+                            return res;
+                        }
+
+                        currentPathNodeName = pn.Dequeue();
+                    }
+
+                    q.Enqueue(childNode);
+                }
+            }
+
+            return null;
+        }
+
+        
         public NandFileNode CreateFile(string path, byte[] data, uint userID = 0,
             ushort groupID = 0,
             NodePerm owner = NodePerm.RW, NodePerm group = NodePerm.Read,

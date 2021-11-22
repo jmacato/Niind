@@ -5,7 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Security;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,9 +23,9 @@ namespace Niind
         public ConcurrentBag<SharedContent> SharedContents = new();
         public ConcurrentBag<TitleMetadataContent> DecryptedTitles = new();
         private static object lockObj = new();
-        private string CachePathName = Path.Combine(Path.GetTempPath(), "niind_nus_cache");
 
-        static readonly HttpClient client = new();
+        private string CachePathName =
+            Path.Combine(Path.GetTempPath(), $"niind_nus_cache____{new Guid().ToString().Replace("-", "")}");
 
         public async Task GetUpdateAsync(KeyFile keyFile)
         {
@@ -32,9 +35,7 @@ namespace Niind
             }
 
             Console.WriteLine("Starting Titles Download from Nintendo Update Servers...");
-            
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("User-Agent", Constants.UpdaterUserAgent);
+
 
             await Constants.Version4_3U_Titles.ParallelForEachAsync(async titles =>
             {
@@ -54,7 +55,9 @@ namespace Niind
                 {
                     logOutput += $"Downloading Title Ticket for {titleID}v{titles.Version}\n";
                     var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
-                    var downloadedTicket = await client.GetByteArrayAsync(downloadCetkUri);
+
+
+                    var downloadedTicket = GetUri(downloadCetkUri);
                     rawTicket = downloadedTicket.CastToStruct<RawTicket>();
                     await File.WriteAllBytesAsync(tikFile, downloadedTicket);
                     logOutput += $"Saved Title Ticket to cache folder.\n";
@@ -83,7 +86,9 @@ namespace Niind
                     logOutput += $"Downloading Title Metadata for {titleID}v{titles.Version}. \n";
 
                     var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
-                    var downloadedTmd = await client.GetByteArrayAsync(downloadTmdUri);
+
+
+                    var downloadedTmd = GetUri(downloadTmdUri);
                     decodedTmd = TitleMetadata.FromByteArray(downloadedTmd);
                     await File.WriteAllBytesAsync(tmdFile, downloadedTmd);
                     logOutput += "Saved Title Metadata to cache folder. \n";
@@ -106,19 +111,16 @@ namespace Niind
 
                 await decodedTmd.ContentDescriptors.ParallelForEachAsync(async contentDescriptor =>
                 {
-                    lock (lockObj)
+                    if (SharedContents.Any(x => x.SHA1.SequenceEqual(contentDescriptor.SHA1)))
                     {
-                        if (SharedContents.Any(x => x.SHA1.SequenceEqual(contentDescriptor.SHA1)))
-                        {
-                            logOutput +=
-                                $"Skipping Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} since it's on the shared map already.\n";
+                        logOutput +=
+                            $"Skipping Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} since it's on the shared map already.\n";
 
-                            return;
-                        }
+                        return;
                     }
 
                     var contentFileName =
-                        $"{CachePathName}/{EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)}.app";
+                        $"{CachePathName}/{titleID}-{(contentDescriptor.ContentID):X8}.app";
 
                     byte[] decryptedHash;
                     byte[] decryptedContent;
@@ -137,7 +139,7 @@ namespace Niind
 
                         var contentUri =
                             new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
-                        var encryptedContent = await client.GetByteArrayAsync(contentUri);
+                        var encryptedContent = GetUri(contentUri);
 
                         EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
 
@@ -182,7 +184,7 @@ namespace Niind
                             logOutput +=
                                 $"Added decrypted content {EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)} in shared content list.\n";
 
-                            SharedContents.Add(new SharedContent( decryptedHash, decryptedContent));
+                            SharedContents.Add(new SharedContent(decryptedHash, decryptedContent));
                         }
                         else
                         {
@@ -198,19 +200,87 @@ namespace Niind
                                      EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1) + "\n";
                         logOutput += "Got Hash     : " + EncryptionHelper.ByteArrayToHexString(decryptedHash) + "\n";
                     }
-                });
+                }, 2);
 
                 Console.WriteLine(logOutput);
-            });
-            
-            
+            }, 2);
+
+
             // this is so inefficient...
             SharedContents = new ConcurrentBag<SharedContent>(SharedContents
                 .GroupBy(x => EncryptionHelper.ByteArrayToHexString(x.SHA1))
                 .Select(g => g.First()).ToList());
-            
-            
+
+
             Console.WriteLine("Done Downloading from Nintendo Update Servers...");
+        }
+
+        private static object locks = new();
+
+        private BackgroundQueue bq = new BackgroundQueue();
+
+
+        public class BackgroundQueue
+        {
+            private Task previousTask = Task.FromResult(true);
+            private object key = new object();
+            static Semaphore sem = new Semaphore(1, 1);
+
+            public Task QueueTask(Action action)
+            {
+                sem.WaitOne();
+
+                previousTask = previousTask.ContinueWith(t => action()
+                    , CancellationToken.None
+                    , TaskContinuationOptions.None
+                    , TaskScheduler.Default);
+                sem.Release();
+                return previousTask;
+            }
+
+            public Task<T> QueueTask<T>(Func<T> work)
+            {
+                sem.WaitOne();
+
+                var task = previousTask.ContinueWith(t => work()
+                    , CancellationToken.None
+                    , TaskContinuationOptions.None
+                    , TaskScheduler.Default);
+                previousTask = task;
+                sem.Release();
+
+                return task;
+            }
+        }
+
+        private static WebClient clientx = new WebClient();
+        private static long counter = 0;
+
+        static NintendoUpdateServerDownloader()
+        {
+            // clientx.Headers.Add("Connection", "keep-alive");
+            clientx.Headers.Add("User-Agent", Constants.UpdaterUserAgent);
+        }
+
+        static SemaphoreSlim sem = new SemaphoreSlim(1, 1);
+
+        private byte[] GetUri(Uri downloadTmdUri)
+        {
+            sem.Wait();
+            Thread.Sleep(1000);
+
+            Console.WriteLine($"Download start {counter}");
+            var x = GetValue(downloadTmdUri);
+            Console.WriteLine($"Download end {counter}");
+            counter += 1;
+            sem.Release();
+            return x;
+        }
+
+
+        byte[] GetValue(Uri s)
+        {
+            return clientx.DownloadData(s);
         }
     }
 }

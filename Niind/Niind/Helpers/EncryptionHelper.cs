@@ -9,19 +9,13 @@ namespace Niind.Helpers
 {
     public static class EncryptionHelper
     {
-        private static readonly SHA1 shaEngine = SHA1.Create();
-
         public static byte[] GetSHA1(byte[] data)
         {
-            lock (shaEngine)
-            {
-                shaEngine.Initialize();
-                shaEngine.ComputeHash(data);
-                return shaEngine.Hash;
-            }
+            using var shaEngine = SHA1.Create();
+            shaEngine.ComputeHash(data);
+            return shaEngine.Hash;
         }
-
-
+        
         public static string GetSHA1String(byte[] data) => ByteArrayToHexString(GetSHA1(data));
         public static string GetSHA1String(string data) => ByteArrayToHexString(GetSHA1(Encoding.ASCII.GetBytes(data)));
         public static byte[] AESDecrypt(byte[] cryptext, byte[] key, int outputLen, byte[]? iv = null)

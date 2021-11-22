@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -15,44 +16,22 @@ namespace Niind.Helpers
             shaEngine.ComputeHash(data);
             return shaEngine.Hash;
         }
-        
+
         public static string GetSHA1String(byte[] data) => ByteArrayToHexString(GetSHA1(data));
         public static string GetSHA1String(string data) => ByteArrayToHexString(GetSHA1(Encoding.ASCII.GetBytes(data)));
+
         public static byte[] AESDecrypt(byte[] cryptext, byte[] key, int outputLen, byte[]? iv = null)
         {
-            using var aes = new RijndaelManaged
-            {
-                Padding = PaddingMode.None,
-                Mode = CipherMode.CBC
-            };
-
-            var decryptor = aes.CreateDecryptor(key, iv);
-
-            using var memoryStream = new MemoryStream(cryptext);
-            using var cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read);
-
-            var plaintext = new byte[outputLen];
-            _ = cryptoStream.Read(plaintext, 0x0, outputLen);
-
-            return plaintext;
+            using var x = Aes.Create();
+            x.Key = key;
+            return x.DecryptCbc(cryptext, iv, PaddingMode.None);
         }
 
-        public static byte[] AESEncrypt(byte[] plaintext, byte[] key, int len, byte[]? iv = null)
+        public static byte[] AESEncrypt(byte[] plaintext, byte[] key, byte[]? iv = null)
         {
-            using var aes = new RijndaelManaged
-            {
-                Padding = PaddingMode.None,
-                Mode = CipherMode.CBC
-            };
-
-            var encryptor = aes.CreateEncryptor(key, iv);
-            using var memoryStream = new MemoryStream(plaintext);
-            using var cryptoStream = new CryptoStream(memoryStream, encryptor, CryptoStreamMode.Read);
-
-            var cryptext = new byte[len];
-            _ = cryptoStream.Read(cryptext, 0x0, len);
-
-            return cryptext;
+            using var x = Aes.Create();
+            x.Key = key;
+            return x.EncryptCbc(plaintext, iv, PaddingMode.None);
         }
 
         public static void PadByteArrayToMultipleOf(ref byte[] src, int pad)

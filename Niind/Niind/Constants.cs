@@ -25,6 +25,7 @@ namespace Niind
         
         public static byte[] EmptyFST = new byte[0x20];
         public static byte[] EmptyPageRawData = new byte[NandPageNoSpareByteSize];
+        public static byte[] EmptyClusterRawData = new byte[NandClusterNoSpareByteSize];
         public static byte[] SuperBlockHeader = Encoding.ASCII.GetBytes("SFFS");
 
 

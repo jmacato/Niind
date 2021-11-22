@@ -22,14 +22,11 @@ namespace Niind.Structures.FileSystem
 
         public void WriteData(byte[] rawData)
         {
-            for (var i = 0; i < Pages.Length; i++)
+            foreach (var pageChunk in Enumerable.Range(0, Pages.Length).Zip(rawData.Chunk((int)Constants.NandPageNoSpareByteSize)))
             {
-                Pages[i].MainData =
-                    rawData.AsSpan()
-                        .Slice((int)(i * Constants.NandPageNoSpareByteSize), (int)Constants.NandPageNoSpareByteSize)
-                        .ToArray();
+                Pages[pageChunk.First].MainData = pageChunk.Second.ToArray();
             }
-
+            
             RecalculateECC();
         }
 
@@ -59,8 +56,8 @@ namespace Niind.Structures.FileSystem
                 throw new ArgumentOutOfRangeException(nameof(plainRawData));
             }
 
-            var cryptext = EncryptionHelper.AESEncrypt(plainRawData, keyFile.NandAESKey, (int)Constants.NandClusterNoSpareByteSize, Constants.EmptyAESIVBytes);
-            
+            var cryptext = EncryptionHelper.AESEncrypt(plainRawData, keyFile.NandAESKey, Constants.EmptyAESIVBytes);
+
             WriteData(cryptext);
         }
 
@@ -70,7 +67,7 @@ namespace Niind.Structures.FileSystem
 
             var dec_data = EncryptionHelper.AESDecrypt(enc_data, keyFile.NandAESKey, enc_data.Length,
                 Constants.EmptyAESIVBytes);
-            
+
             return dec_data;
         }
 
@@ -81,7 +78,7 @@ namespace Niind.Structures.FileSystem
 
         public void EraseData(KeyFile keyFile)
         {
-            WriteDataAsEncrypted(keyFile, Constants.EmptyPageRawData);
+            WriteDataAsEncrypted(keyFile, Constants.EmptyClusterRawData);
             PurgeSpareData();
             RecalculateECC();
         }

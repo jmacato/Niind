@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using Niind.Helpers;
-using static Niind.Helpers.LinqHelper;
 
 namespace Niind.Structures.FileSystem
 {

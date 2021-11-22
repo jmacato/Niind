@@ -59,10 +59,10 @@ namespace Niind
             }
 
 
-            // var x = new NintendoUpdateServerDownloader();
-            // await x.GetUpdateAsync(distilledNand.KeyFile);
-            //
-            // var t = GenerateShared1(x);
+            var x = new NintendoUpdateServerDownloader();
+            await x.GetUpdateAsync(distilledNand.KeyFile);
+            
+            var t = GenerateShared1(x);
 
             var nandErrRaw = distilledNand.RootNode.GetFile("/shared2/test2/nanderr.log")
                 ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile);

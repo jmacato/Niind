@@ -25,7 +25,7 @@ namespace Niind
         private static object lockObj = new();
 
         private string CachePathName =
-            Path.Combine(Path.GetTempPath(), $"niind_nus_cache____{new Guid().ToString().Replace("-", "")}");
+            Path.Combine(Path.GetTempPath(), $"niind_nus_cache340904");
 
         public async Task GetUpdateAsync(KeyFile keyFile)
         {
@@ -182,7 +182,7 @@ namespace Niind
                         if (contentDescriptor.Type == 0x8001)
                         {
                             logOutput +=
-                                $"Added decrypted content {EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1)} in shared content list.\n";
+                                $"Added decrypted content {decodedTmd.Header.TitleID:X16}/{contentDescriptor.ContentID:X8} in shared content list.\n";
 
                             SharedContents.Add(new SharedContent(decryptedHash, decryptedContent));
                         }
@@ -200,10 +200,10 @@ namespace Niind
                                      EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1) + "\n";
                         logOutput += "Got Hash     : " + EncryptionHelper.ByteArrayToHexString(decryptedHash) + "\n";
                     }
-                }, 2);
+                });
 
                 Console.WriteLine(logOutput);
-            }, 2);
+            });
 
 
             // this is so inefficient...
@@ -262,17 +262,17 @@ namespace Niind
             clientx.Headers.Add("User-Agent", Constants.UpdaterUserAgent);
         }
 
-        static SemaphoreSlim sem = new SemaphoreSlim(1, 1);
+        static SemaphoreSlim sem = new SemaphoreSlim(1, 16);
 
         private byte[] GetUri(Uri downloadTmdUri)
         {
             sem.Wait();
-            Thread.Sleep(1000);
+            // Thread.Sleep(1000);
 
-            Console.WriteLine($"Download start {counter}");
+            // Console.WriteLine($"Download start {counter}");
             var x = GetValue(downloadTmdUri);
-            Console.WriteLine($"Download end {counter}");
-            counter += 1;
+            // Console.WriteLine($"Download end {counter}");
+            // counter += 1;
             sem.Release();
             return x;
         }

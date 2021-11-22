@@ -24,7 +24,7 @@ namespace Niind.Helpers
         {
             using var x = Aes.Create();
             x.Key = key;
-            return x.DecryptCbc(cryptext, iv, PaddingMode.None);
+            return x.DecryptCbc(cryptext, iv, PaddingMode.None)[..outputLen];
         }
 
         public static byte[] AESEncrypt(byte[] plaintext, byte[] key, byte[]? iv = null)

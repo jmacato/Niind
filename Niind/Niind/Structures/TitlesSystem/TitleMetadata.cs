@@ -8,12 +8,15 @@ namespace Niind.Structures.TitlesSystem
     {
         public TitleMetadataHeader Header { get; }
         public IList<TitleMetadataContent> ContentDescriptors { get; }
+        
+        public int DecryptedContentCount { get; set; }
 
         private TitleMetadata(TitleMetadataHeader header,
             IList<TitleMetadataContent> contentDescriptors)
         {
             Header = header;
             ContentDescriptors = contentDescriptors;
+            DecryptedContentCount = 0;
         }
 
         public static TitleMetadata FromByteArray(byte[] tmdBytes)

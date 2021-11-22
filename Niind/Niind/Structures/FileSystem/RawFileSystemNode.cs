@@ -33,7 +33,7 @@ namespace Niind.Structures.FileSystem
         }
 
 
-        public RawFileSystemNode? GetFile(string path)
+        public RawFileSystemNode? GetNode(string path)
         {
             if (Filename != "/") return null;
 
@@ -48,12 +48,12 @@ namespace Niind.Structures.FileSystem
             while (q.Count != 0)
             {
                 var current = q.Dequeue();
-                
+
                 foreach (var childNode in current.Children)
                 {
                     if (childNode.Filename == currentPathNodeName)
                     {
-                        if (pn.Count == 0 && childNode.IsFile)
+                        if (pn.Count == 0)
                         {
                             q.Clear();
                             pn.Clear();
@@ -91,9 +91,12 @@ namespace Niind.Structures.FileSystem
             indent += "| ";
 
             Console.Write(Filename + (IsFile ? "" : "/"));
-
+            Console.Write("\t\t");
             if (IsFile)
-                Console.Write($"\t\t{FSTEntry.FileSize} bytes");
+                Console.Write($"{FSTEntry.FileSize} bytes ");
+            
+            Console.Write($"Uid {FSTEntry.UserID:X} Gid {FSTEntry.GroupID:X}" +
+                          $" OW {FSTEntry.OwnerPermissions} GP {FSTEntry.GroupPermissions} OT {FSTEntry.OtherPermissions}");
 
             Console.WriteLine("");
 

@@ -11,6 +11,8 @@ namespace Niind.Structures.TitlesSystem
         public byte[] DecryptionKey;
         public byte[] DecryptionIV;
         public TitleMetadata ParentTMD;
-        public RawTicket Ticket;
+        public RawTicket DecodedTicket;
+        public byte[] DownloadedTicket;
+        public byte[] DownloadedTMD;
     }
 }

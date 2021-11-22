@@ -133,6 +133,8 @@ namespace Niind.Structures.FileSystem
             var pad = (int)Constants.NandClusterNoSpareByteSize;
             var clustersNeeded = (data.Length + pad - 1) / pad;
             
+
+            
             var fileClusters = _distilledNand
                 .ValidClusters
                 .Where(x => (ClusterDescriptor)x.Value == ClusterDescriptor.Empty &&

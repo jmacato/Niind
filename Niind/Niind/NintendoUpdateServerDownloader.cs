@@ -46,24 +46,26 @@ namespace Niind
                 var tikFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleID}")}.tik";
 
                 RawTicket rawTicket;
+                byte[] downloadedTicket = null, downloadedTmd = null;
+                
                 if (File.Exists(tikFile))
                 {
                     logOutput += $"Getting Title Ticket for {titleID}v{titles.Version} from cache folder.\n";
-                    rawTicket = (await File.ReadAllBytesAsync(tikFile)).CastToStruct<RawTicket>();
+                    downloadedTicket = await File.ReadAllBytesAsync(tikFile);
+                    rawTicket = downloadedTicket.CastToStruct<RawTicket>();
                 }
                 else
                 {
                     logOutput += $"Downloading Title Ticket for {titleID}v{titles.Version}\n";
                     var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
-
-
-                    var downloadedTicket = GetUri(downloadCetkUri);
+                    downloadedTicket = GetUri(downloadCetkUri);
                     rawTicket = downloadedTicket.CastToStruct<RawTicket>();
+                    
+                     
+                    
                     await File.WriteAllBytesAsync(tikFile, downloadedTicket);
                     logOutput += $"Saved Title Ticket to cache folder.\n";
                 }
-
-                var issuer = Encoding.ASCII.GetString(rawTicket.Issuer).Trim(char.MinValue);
 
                 if (rawTicket.CommonKeyIndex[0] != 0)
                 {
@@ -79,7 +81,8 @@ namespace Niind
                 if (File.Exists(tmdFile))
                 {
                     logOutput += $"Getting Title Metadata for {titleID}v{titles.Version} from cache folder.\n";
-                    decodedTmd = TitleMetadata.FromByteArray(await File.ReadAllBytesAsync(tmdFile));
+                    downloadedTmd = await File.ReadAllBytesAsync(tmdFile);
+                    decodedTmd = TitleMetadata.FromByteArray(downloadedTmd);
                 }
                 else
                 {
@@ -88,8 +91,13 @@ namespace Niind
                     var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
 
 
-                    var downloadedTmd = GetUri(downloadTmdUri);
+                    downloadedTmd = GetUri(downloadTmdUri);
                     decodedTmd = TitleMetadata.FromByteArray(downloadedTmd);
+
+                    if (decodedTmd.CastToArray().SequenceEqual(downloadedTmd))
+                    {
+                        
+                    }
                     await File.WriteAllBytesAsync(tmdFile, downloadedTmd);
                     logOutput += "Saved Title Metadata to cache folder. \n";
                 }
@@ -174,7 +182,9 @@ namespace Niind
                                      EncryptionHelper.ByteArrayToHexString(contentDescriptor.SHA1) + "\n";
 
                         contentDescriptor.ParentTMD = decodedTmd;
-                        contentDescriptor.Ticket = rawTicket;
+                        contentDescriptor.DownloadedTMD = downloadedTmd;
+                        contentDescriptor.DecodedTicket = rawTicket;
+                        contentDescriptor.DownloadedTicket = downloadedTicket;
                         contentDescriptor.DecryptedContent = decryptedContent;
                         contentDescriptor.DecryptionKey = decryptedTitleKey;
                         contentDescriptor.DecryptionIV = keyIV;
@@ -191,6 +201,7 @@ namespace Niind
                             logOutput +=
                                 $"Added decrypted content as {decodedTmd.Header.TitleID:X16}/{contentDescriptor.ContentID:X8} on the installed titles list.\n";
                             DecryptedTitles.Add(contentDescriptor);
+                            contentDescriptor.ParentTMD.DecryptedContentCount+=1;
                         }
                     }
                     else

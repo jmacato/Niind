@@ -330,6 +330,8 @@ namespace Niind.Structures.FileSystem
                         // Mark cluster as free space.
                         superBlockTarget.ClusterEntries[i] = CastingHelper.Swap_Val((ushort)ClusterDescriptor.Empty);
 
+                        
+                        
                         // Actually delete the data.
                         var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
                         var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];

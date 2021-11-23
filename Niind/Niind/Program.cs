@@ -21,13 +21,13 @@ namespace Niind
             
             var rawFullDump =
                 File.ReadAllBytes(
-                    "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-04186005-h0133gb copy 2.bin");
+                    "/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand-niind-2.bin");
 
             Console.WriteLine("Nand File Loaded.");
 
             var rawKeyFile =
                 File.ReadAllBytes(
-                    "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/keys-perfect-04186005-h0133gb.bin");
+                    "/Users/jumarmacato/Desktop/nand-test-unit/working copy/keys.bin");
 
             Console.WriteLine("Key File Loaded.");
 
@@ -56,15 +56,8 @@ namespace Niind
             Console.WriteLine("Key file matches the NAND dump.");
             
             
-            
-            
-
             var distilledNand = new DistilledNand(nandData, keyData);
- 
-
-            var x = new NintendoUpdateServerDownloader();
-            await x.GetUpdateAsync(distilledNand.KeyFile);
-            
+  
             
             var currentRoot = new NandRootNode(distilledNand);
 
@@ -76,26 +69,10 @@ namespace Niind
             currentRoot.CreateDirectory("/import");
             currentRoot.CreateDirectory("/meta", 0x1000, 1, group: NodePerm.RW);
             currentRoot.CreateDirectory("/tmp", group: NodePerm.RW);
-
-            var rndSrc = new Random();
-
-            var testFile =
-                new byte[Math.Max(1, (int)((Constants.NandClusterNoSpareByteSize * 5) * rndSrc.NextDouble()))];
-
-            rndSrc.NextBytes(testFile);
-
-            var h1 = EncryptionHelper.GetSHA1(testFile);
-
-            currentRoot.CreateFile("/tmp/test1.txt", testFile,
+   
+            currentRoot.CreateFile("/sys/uid.sys", new byte[]{ 00,00,00,1, 00,00,00,2 , 1,0,0,0},
                 other: NodePerm.Read);
-
-            currentRoot.CreateFile("/shared1/content.map", Array.Empty<byte>(),
-                other: NodePerm.Read);
-
-            currentRoot.CreateFile("/sys/uid.sys", Array.Empty<byte>(),
-                other: NodePerm.Read);
-
-
+            
             distilledNand = currentRoot.WriteAndCommitToNand();
 
             Console.WriteLine("Checking the reformatted NAND.");
@@ -103,19 +80,17 @@ namespace Niind
             distilledNand.NandProcessAndCheck();
 
             var retTestFile = GetFileContent(distilledNand, "test1.txt");
-            var h2 = EncryptionHelper.GetSHA1(retTestFile);
+            var h2 = EncryptionHelper.GetSHA1(retTestFile); 
 
-            if (h1.SequenceEqual(h2))
-            {
-                Console.WriteLine($"Random Test File Verification Success. Hash: {ToHex(h1)}");
-            }
+            var h = distilledNand.NandDumpFile.CastToArray();
             
-            
+            Console.WriteLine($"distilledNand Hash: { EncryptionHelper.GetSHA1String(h)}");
+
             
 
             File.WriteAllBytes(
-                "/Users/jumarmacato/Documents/Electronics/Wii NAND Experiment/wiinandfolder/nand-perfect-test-cleaned.bin",
-                distilledNand.NandDumpFile.CastToArray());
+                "/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand-niind-20000000.bin",h
+                );
         }
 
 

@@ -38,7 +38,7 @@ internal class Program
             throw new FormatException("The NAND dump's internal structure is not correct!" +
                                       " Try to dump your console via BootMii again.");
 
-        var bootMiiHeaderText = Encoding.ASCII.GetString(nandData.BootMiiFooterBlock.HeaderString).Trim((char)0x0)
+        var bootMiiHeaderText = Encoding.ASCII.GetString(nandData.BootMiiFooterBlock.HeaderString).Trim((char) 0x0)
             .Trim('\n');
 
         Console.WriteLine($"BootMii Metadata Header: {bootMiiHeaderText}");
@@ -81,6 +81,55 @@ internal class Program
 
         var certSysValid = certSysRawSha1String == Constants.ReferenceCertSysSHA1;
         Console.WriteLine($"cert.sys in nand is valid : {certSysValid}");
+
+
+        //
+        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/olduid.sys", distilledNand.RootNode.GetNode("/sys/uid.sys")
+        //     ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
+        //
+        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/0000000100000002_old.tik", 
+        //     distilledNand.RootNode.GetNode("/ticket/00000001/00000002.tik")
+        //         ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
+
+
+        await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/old_content_map.bin",
+            distilledNand.RootNode.GetNode("/shared1/content.map")
+                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
+
+
+        var ncm = await File.ReadAllBytesAsync(
+            "/Users/jumarmacato/Desktop/nand-test-unit/working copy/new_content_map.bin");
+
+        var ocm = await File.ReadAllBytesAsync(
+            "/Users/jumarmacato/Desktop/nand-test-unit/working copy/old_content_map.bin");
+
+
+        var ncm_hashes = new List<string>();
+
+        foreach (var hash in ncm.Chunk(28).Select(x => x[8..]))
+        {
+            ncm_hashes.Add(EncryptionHelper.ByteArrayToHexString(hash));
+        }
+
+        var ocm_hashes = new List<string>();
+
+        foreach (var hash in ocm.Chunk(28).Select(x => x[8..]))
+        {
+            ocm_hashes.Add(EncryptionHelper.ByteArrayToHexString(hash));
+        }
+
+        ncm_hashes = ncm_hashes.OrderBy(x => x).ToList();
+        ocm_hashes = ocm_hashes.OrderBy(x => x).ToList();
+
+
+        if (ncm_hashes.SequenceEqual(ocm_hashes))
+        {
+            
+        }
+        else
+        {
+            
+        }
 
         // reformat the nand
         Console.WriteLine("Erasing NAND for First Phase");
@@ -125,7 +174,7 @@ internal class Program
         var orderedTitleContents = nus.DecryptedTitles
             .OrderBy(x => x.ParentTMD.Header.TitleID)
             .GroupBy(x => x.ParentTMD.Header.TitleID)
-            .Zip(Enumerable.Range(0x1000, nus.DecryptedTitles.Count).Select(x => (uint)x))
+            .Zip(Enumerable.Range(0x1000, nus.DecryptedTitles.Count).Select(x => (uint) x))
             .ToDictionary(x => x.First.Key, x => (x.Second, x.First));
 
         var uidSysList = new List<RawUIDSysEntry>();
@@ -145,11 +194,11 @@ internal class Program
             {
                 gid = v.ParentTMD.Header.GroupID;
                 tid = v.ParentTMD.Header.TitleID;
-                tidS = $"{tid:X16}".ToLowerInvariant();
+                tidS = tid.ToString("X16").ToLowerInvariant();
                 tidH = tidS[..8].ToLowerInvariant();
                 tidL = tidS[8..].ToLowerInvariant();
 
-                var cidS = $"{v.ContentID:X8}".ToLowerInvariant();
+                var cidS = v.ContentID.ToString("X8").ToLowerInvariant();
 
                 Console.WriteLine(
                     $"Installing Content ID {cidS} for Title ID {tidS}");
@@ -164,17 +213,16 @@ internal class Program
                 Console.WriteLine($"Content ID {cidS} installed.");
             }
 
-            var dataPath = $"/title/{tidH}/{tidL}/data";
+            var titleHighDir = $"/title/{tidH}";
+            var titleLowDir = $"/title/{tidH}/{tidL}";
+            var dataDir = $"/title/{tidH}/{tidL}/data";
+            var contentDir = $"/title/{tidH}/{tidL}/content";
 
-            currentRoot.CreateDirectory(dataPath,
-                other: NodePerm.None,
-                group: NodePerm.None,
-                owner: NodePerm.RW,
-                userID: uid,
-                groupID: gid);
-
-            Console.WriteLine($"Created {dataPath} for {tidS} with Uid {uid:X}/Gid {gid:X}.");
-
+            currentRoot.CreateDirectory(titleHighDir, owner: NodePerm.RW, group: NodePerm.None, other: NodePerm.Read);
+            currentRoot.CreateDirectory(titleLowDir, owner: NodePerm.RW, group: NodePerm.RW, other: NodePerm.Read);
+            currentRoot.CreateDirectory(dataDir, owner: NodePerm.RW, group: NodePerm.None, other: NodePerm.None,
+                userID: uid, groupID: gid);
+            currentRoot.CreateDirectory(contentDir, owner: NodePerm.RW, group: NodePerm.RW, other: NodePerm.None);
 
             Console.WriteLine($"Installing Title ID {tidS} ({tidH}/{tidL})  UID {uid:X4} GID {gid:X4}");
 
@@ -188,7 +236,7 @@ internal class Program
 
             var ticketPath = $"/ticket/{tidH}/{tidL}.tik";
 
-            currentRoot.CreateFile(ticketPath, firstContent.DownloadedTicket,
+            currentRoot.CreateFile(ticketPath, firstContent.DownloadedTicket[..0x2a4],
                 other: NodePerm.None,
                 group: NodePerm.RW,
                 owner: NodePerm.RW);
@@ -207,6 +255,14 @@ internal class Program
                 owner: NodePerm.RW);
 
             Console.WriteLine($"Installed TMD to {tmdPath} byte size {j}");
+
+            currentRoot.GetNode(titleHighDir)
+                .SetPermissions(NodePerm.RW, NodePerm.None, NodePerm.Read);
+            currentRoot.GetNode(titleLowDir)
+                .SetPermissions(NodePerm.RW, NodePerm.RW, NodePerm.Read);
+            currentRoot.GetNode(dataDir)
+                .SetPermissions(NodePerm.RW, NodePerm.None);
+            currentRoot.GetNode(contentDir).SetPermissions();
         }
 
         using var uidSysStream = new MemoryStream();
@@ -242,6 +298,19 @@ internal class Program
 
         Console.WriteLine($"Hash {EncryptionHelper.GetSHA1String(u)}.");
 
+        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/newuid.sys", 
+        //     distilledNand.RootNode.GetNode("/sys/uid.sys")
+        //         ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
+        //
+        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/0000000100000002_new.tik", 
+        //     distilledNand.RootNode.GetNode("/ticket/00000001/00000002.tik")
+        //         ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
+
+
+        await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/new_content_map.bin",
+            distilledNand.RootNode.GetNode("/shared1/content.map")
+                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
+
 
         await File.WriteAllBytesAsync(
             "/Users/jumarmacato/Desktop/nand-test-unit/working copy/niind-nand-blank2.bin", u
@@ -276,7 +345,7 @@ internal class Program
         foreach (var vt in nusDownloader.SharedContents.Zip(Enumerable.Range(0,
                      nusDownloader.SharedContents.Count)))
         {
-            var index = (uint)vt.Second;
+            var index = (uint) vt.Second;
             var sha1 = vt.First.SHA1;
             var content = vt.First.Content;
 
@@ -298,14 +367,14 @@ internal class Program
     {
         var setting = new Dictionary<string, string>
         {
-            { "AREA", "USA" },
-            { "MODEL", "RVL-001(USA)" },
-            { "DVD", "0" },
-            { "MPCH", "0x7FFE" },
-            { "CODE", "LU" },
-            { "SERNO", "632011873" },
-            { "VIDEO", "NTSC" },
-            { "GAME", "US" }
+            {"AREA", "USA"},
+            {"MODEL", "RVL-001(USA)"},
+            {"DVD", "0"},
+            {"MPCH", "0x7FFE"},
+            {"CODE", "LU"},
+            {"SERNO", "632011873"},
+            {"VIDEO", "NTSC"},
+            {"GAME", "US"}
         };
 
 
@@ -327,34 +396,10 @@ internal class Program
 
         for (i = 0; i < len; i++)
         {
-            buffer[i] ^= (byte)(key & 0xff);
+            buffer[i] ^= (byte) (key & 0xff);
             key = (key << 1) | (key >> 31);
         }
 
         rawtxt = buffer.ToArray();
-    }
-
-    public static string StringFormat(string format, IDictionary<string, object> values)
-    {
-        var matches = Regex.Matches(format, @"\{(.+?)\}");
-        var words = (from Match matche in matches select matche.Groups[1].Value).ToList();
-
-        return words.Aggregate(
-            format,
-            (current, key) =>
-            {
-                var colonIndex = key.IndexOf(':');
-                return current.Replace(
-                    "{" + key + "}",
-                    colonIndex > 0
-                        ? string.Format("{0:" + key.Substring(colonIndex + 1) + "}",
-                            values[key.Substring(0, colonIndex)])
-                        : values[key].ToString());
-            });
-    }
-
-    private static string ToHex(byte[] inx)
-    {
-        return BitConverter.ToString(inx).Replace("-", "");
     }
 }

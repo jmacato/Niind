@@ -76,7 +76,7 @@ namespace Niind.Structures.FileSystem
         }
 
         
-        public NandFileNode? GetFile(string path)
+        public NandNode? GetNode(string path)
         {
             Queue<NandNode> q = new();
             Queue<string> pn = new Queue<string>(path.Split("/")
@@ -94,11 +94,11 @@ namespace Niind.Structures.FileSystem
                 {
                     if (childNode.FileName == currentPathNodeName)
                     {
-                        if (pn.Count == 0 && childNode is NandFileNode res)
+                        if (pn.Count == 0 )
                         {
                             q.Clear();
                             pn.Clear();
-                            return res;
+                            return childNode;
                         }
 
                         currentPathNodeName = pn.Dequeue();

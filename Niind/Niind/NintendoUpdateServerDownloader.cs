@@ -25,7 +25,7 @@ namespace Niind
         private static object lockObj = new();
 
         private string CachePathName =
-            Path.Combine(Path.GetTempPath(), $"niind_nus_cache_78x02");
+            Path.Combine(Path.GetTempPath(), $"niind_nus_cache");
 
         public async Task GetUpdateAsync(KeyFile keyFile)
         {

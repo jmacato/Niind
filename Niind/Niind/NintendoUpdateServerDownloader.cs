@@ -25,7 +25,7 @@ namespace Niind
         private static object lockObj = new();
 
         private string CachePathName =
-            Path.Combine(Path.GetTempPath(), $"niind_nus_cache340904");
+            Path.Combine(Path.GetTempPath(), $"niind_nus_cache_78x02");
 
         public async Task GetUpdateAsync(KeyFile keyFile)
         {
@@ -93,11 +93,7 @@ namespace Niind
 
                     downloadedTmd = GetUri(downloadTmdUri);
                     decodedTmd = TitleMetadata.FromByteArray(downloadedTmd);
-
-                    if (decodedTmd.CastToArray().SequenceEqual(downloadedTmd))
-                    {
-                        
-                    }
+ 
                     await File.WriteAllBytesAsync(tmdFile, downloadedTmd);
                     logOutput += "Saved Title Metadata to cache folder. \n";
                 }
@@ -273,7 +269,7 @@ namespace Niind
             clientx.Headers.Add("User-Agent", Constants.UpdaterUserAgent);
         }
 
-        static SemaphoreSlim sem = new SemaphoreSlim(1, 16);
+        static SemaphoreSlim sem = new SemaphoreSlim(1, 1);
 
         private byte[] GetUri(Uri uri)
         {

@@ -333,9 +333,9 @@ namespace Niind.Structures.FileSystem
                         
                         
                         // Actually delete the data.
-                        var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
-                        var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
-                        target.EraseData(KeyFile);
+                        // var addr = NandAddressTranslationHelper.AbsoluteClusterToBlockCluster(i);
+                        // var target = NandDumpFile.Blocks[addr.Block].Clusters[addr.Cluster];
+                        // target.EraseData(KeyFile);
                         clusterDeleted++;
                     }
                 }).GetAwaiter().GetResult();

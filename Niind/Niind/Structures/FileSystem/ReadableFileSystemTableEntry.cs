@@ -30,7 +30,7 @@ namespace Niind.Structures.FileSystem
                               (IsFile ? 1 : 0));
 
 
-            var fileName = Encoding.ASCII.GetBytes(FileName);
+            var fileName = Encoding.ASCII.GetBytes(FileName)[..FileName.Length];
             var fileNameBuf = new byte[0xC];
             fileName.CopyTo(fileNameBuf, 0);
 

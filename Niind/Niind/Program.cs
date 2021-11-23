@@ -12,17 +12,19 @@ using Niind.Structures.TitlesSystem;
 
 namespace Niind;
 
-internal class Program
+internal static class Program
 {
-    private static async Task Main(string[] args)
+    private static async Task Main()
     {
         Console.WriteLine("Loading Files...");
 
-        var rawFullDump = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand.bin");
+        var rawFullDump =
+            await File.ReadAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/nand.bin");
 
         Console.WriteLine("Nand File Loaded.");
 
-        var rawKeyFile = File.ReadAllBytes("/Users/jumarmacato/Desktop/nand-test-unit/working copy/keys.bin");
+        var rawKeyFile =
+            await File.ReadAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/keys.bin");
 
         Console.WriteLine("Key File Loaded.");
 
@@ -50,12 +52,10 @@ internal class Program
 
         Console.WriteLine("Key file matches the NAND dump.");
 
-
         var distilledNand = new DistilledNand(nandData, keyData);
 
         foreach (var kvp in GetSystemInfo(distilledNand))
             Console.WriteLine("Key = {0}, Value = {1}", kvp.Key, kvp.Value);
-
 
         var nus = new NintendoUpdateServerDownloader();
         await nus.GetUpdateAsync(distilledNand.KeyFile);
@@ -81,55 +81,6 @@ internal class Program
 
         var certSysValid = certSysRawSha1String == Constants.ReferenceCertSysSHA1;
         Console.WriteLine($"cert.sys in nand is valid : {certSysValid}");
-
-
-        //
-        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/olduid.sys", distilledNand.RootNode.GetNode("/sys/uid.sys")
-        //     ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
-        //
-        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/0000000100000002_old.tik", 
-        //     distilledNand.RootNode.GetNode("/ticket/00000001/00000002.tik")
-        //         ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
-
-
-        await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/old_content_map.bin",
-            distilledNand.RootNode.GetNode("/shared1/content.map")
-                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
-
-
-        var ncm = await File.ReadAllBytesAsync(
-            "/Users/jumarmacato/Desktop/nand-test-unit/working copy/new_content_map.bin");
-
-        var ocm = await File.ReadAllBytesAsync(
-            "/Users/jumarmacato/Desktop/nand-test-unit/working copy/old_content_map.bin");
-
-
-        var ncm_hashes = new List<string>();
-
-        foreach (var hash in ncm.Chunk(28).Select(x => x[8..]))
-        {
-            ncm_hashes.Add(EncryptionHelper.ByteArrayToHexString(hash));
-        }
-
-        var ocm_hashes = new List<string>();
-
-        foreach (var hash in ocm.Chunk(28).Select(x => x[8..]))
-        {
-            ocm_hashes.Add(EncryptionHelper.ByteArrayToHexString(hash));
-        }
-
-        ncm_hashes = ncm_hashes.OrderBy(x => x).ToList();
-        ocm_hashes = ocm_hashes.OrderBy(x => x).ToList();
-
-
-        if (ncm_hashes.SequenceEqual(ocm_hashes))
-        {
-            
-        }
-        else
-        {
-            
-        }
 
         // reformat the nand
         Console.WriteLine("Erasing NAND for First Phase");
@@ -174,10 +125,13 @@ internal class Program
         var orderedTitleContents = nus.DecryptedTitles
             .OrderBy(x => x.ParentTMD.Header.TitleID)
             .GroupBy(x => x.ParentTMD.Header.TitleID)
-            .Zip(Enumerable.Range(0x1000, nus.DecryptedTitles.Count).Select(x => (uint) x))
+            .Zip(Enumerable.Range(0x1001, nus.DecryptedTitles.Count).Select(x => (uint) x))
             .ToDictionary(x => x.First.Key, x => (x.Second, x.First));
 
-        var uidSysList = new List<RawUIDSysEntry>();
+        var uidSysList = new Dictionary<ulong, RawUIDSysEntry>();
+
+        uidSysList.Add(0x100000002, new RawUIDSysEntry(0x100000002, 0x1000));
+        uidSysList.Add(0x100003132314a, new RawUIDSysEntry(0x100003132314a, 0x1001));
 
         foreach (var content in orderedTitleContents)
         {
@@ -185,27 +139,25 @@ internal class Program
 
             var contents = content.Value.First.AsEnumerable();
             var uid = content.Value.Second;
-            var firstContent = contents.First();
             ushort gid = 0;
             ulong tid = 0;
             string tidS = null, tidH = null, tidL = null;
-
-            foreach (var v in contents)
+            TitleMetadataContent lastContent = null;
+            
+            foreach (var tmc in contents)
             {
-                gid = v.ParentTMD.Header.GroupID;
-                tid = v.ParentTMD.Header.TitleID;
+                lastContent = tmc;
+                gid = tmc.ParentTMD.Header.GroupID;
+                tid = tmc.ParentTMD.Header.TitleID;
                 tidS = tid.ToString("X16").ToLowerInvariant();
                 tidH = tidS[..8].ToLowerInvariant();
                 tidL = tidS[8..].ToLowerInvariant();
 
-                var cidS = v.ContentID.ToString("X8").ToLowerInvariant();
-
-                Console.WriteLine(
-                    $"Installing Content ID {cidS} for Title ID {tidS}");
+                var cidS = tmc.ContentID.ToString("X8").ToLowerInvariant();
 
                 var contentPath = $"/title/{tidH}/{tidL}/content/{cidS}.app";
 
-                currentRoot.CreateFile(contentPath, v.DecryptedContent,
+                currentRoot.CreateFile(contentPath, tmc.DecryptedContent,
                     other: NodePerm.None,
                     group: NodePerm.RW,
                     owner: NodePerm.RW);
@@ -227,16 +179,20 @@ internal class Program
             Console.WriteLine($"Installing Title ID {tidS} ({tidH}/{tidL})  UID {uid:X4} GID {gid:X4}");
 
             Console.WriteLine($"Adding Title ID {tidS} to uid.sys");
-            uidSysList.Add(new RawUIDSysEntry(tid, uid));
 
-            var tik = firstContent.DecodedTicket;
+            if (!uidSysList.ContainsKey(tid))
+            {
+                uidSysList.Add(tid, new RawUIDSysEntry(tid, uid));
+            }
+
+            var tik = lastContent!.DecodedTicket!;
 
             Console.WriteLine($"Installing Ticket ID {BitConverter.ToUInt64(tik.TicketID):X16} " +
                               $"for Title ID {tidS}");
 
             var ticketPath = $"/ticket/{tidH}/{tidL}.tik";
 
-            currentRoot.CreateFile(ticketPath, firstContent.DownloadedTicket[..0x2a4],
+            currentRoot.CreateFile(ticketPath, lastContent.DownloadedTicket[..0x2a4],
                 other: NodePerm.None,
                 group: NodePerm.RW,
                 owner: NodePerm.RW);
@@ -247,31 +203,32 @@ internal class Program
 
             var tmdPath = $"/title/{tidH}/{tidL}/content/title.tmd";
 
-            var j = 0x1E4 + (firstContent.ParentTMD.ContentDescriptors.Count * 36);
+            var tmdBlockSize = 0x1E4 + (lastContent.ParentTMD.ContentDescriptors.Count * 36);
 
-            currentRoot.CreateFile(tmdPath, firstContent.DownloadedTMD[..j],
+            currentRoot.CreateFile(tmdPath, lastContent.DownloadedTMD[..tmdBlockSize],
                 other: NodePerm.None,
                 group: NodePerm.RW,
                 owner: NodePerm.RW);
 
-            Console.WriteLine($"Installed TMD to {tmdPath} byte size {j}");
+            Console.WriteLine($"Installed TMD to {tmdPath} byte size {tmdBlockSize}");
 
-            currentRoot.GetNode(titleHighDir)
+            currentRoot.GetNode(titleHighDir)?
                 .SetPermissions(NodePerm.RW, NodePerm.None, NodePerm.Read);
-            currentRoot.GetNode(titleLowDir)
+            currentRoot.GetNode(titleLowDir)?
                 .SetPermissions(NodePerm.RW, NodePerm.RW, NodePerm.Read);
-            currentRoot.GetNode(dataDir)
+            currentRoot.GetNode(dataDir)?
                 .SetPermissions(NodePerm.RW, NodePerm.None);
-            currentRoot.GetNode(contentDir).SetPermissions();
+            currentRoot.GetNode(contentDir)?
+                .SetPermissions();
         }
 
-        using var uidSysStream = new MemoryStream();
+        await using var uidSysStream = new MemoryStream();
 
-        foreach (var entry in uidSysList)
+        foreach (var entry in uidSysList.Select(x => x.Value))
         {
             await uidSysStream.WriteAsync(entry.CastToArray());
         }
-
+        
         currentRoot.CreateFile("/sys/uid.sys", uidSysStream.ToArray(),
             other: NodePerm.None,
             group: NodePerm.RW,
@@ -283,10 +240,6 @@ internal class Program
             owner: NodePerm.Read,
             userID: 0x1000,
             groupID: 1);
-        //
-        // currentRoot.CreateFile("/sys/uid.sys", new byte[] { 00, 00, 00, 1, 00, 00, 00, 2, 1, 0, 0, 0 },
-        //     other: NodePerm.Read);
-
 
         distilledNand = currentRoot.WriteAndCommitToNand();
 
@@ -294,31 +247,15 @@ internal class Program
 
         distilledNand.NandProcessAndCheck();
 
-        var u = distilledNand.NandDumpFile.CastToArray();
-
-        Console.WriteLine($"Hash {EncryptionHelper.GetSHA1String(u)}.");
-
-        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/newuid.sys", 
-        //     distilledNand.RootNode.GetNode("/sys/uid.sys")
-        //         ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
-        //
-        // await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/0000000100000002_new.tik", 
-        //     distilledNand.RootNode.GetNode("/ticket/00000001/00000002.tik")
-        //         ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
-
-
-        await File.WriteAllBytesAsync("/Users/jumarmacato/Desktop/nand-test-unit/working copy/new_content_map.bin",
-            distilledNand.RootNode.GetNode("/shared1/content.map")
-                ?.GetFileContents(distilledNand.NandDumpFile, distilledNand.KeyFile));
-
+        var rawNand = distilledNand.NandDumpFile.CastToArray();
 
         await File.WriteAllBytesAsync(
-            "/Users/jumarmacato/Desktop/nand-test-unit/working copy/niind-nand-blank2.bin", u
+            "/Users/jumarmacato/Desktop/nand-test-unit/working copy/niind-nand-blank2.bin", rawNand
         );
     }
 
 
-    private static Dictionary<string, string>? GetSystemInfo(DistilledNand distilledNand)
+    private static Dictionary<string, string> GetSystemInfo(DistilledNand distilledNand)
     {
         var xww = distilledNand.RootNode.GetNode("/title/00000001/00000002/data/setting.txt");
 
@@ -355,11 +292,11 @@ internal class Program
             contentMapList.Add(new RawContentMapEntry(index, sha1));
         }
 
-        var rawCM = new List<byte>();
+        var rawCm = new List<byte>();
 
-        foreach (var rawEntry in contentMapList.Select(tx => tx.CastToArray())) rawCM.AddRange(rawEntry);
+        foreach (var rawEntry in contentMapList.Select(tx => tx.CastToArray())) rawCm.AddRange(rawEntry);
 
-        return (rawCM.ToArray(), folder);
+        return (rawCm.ToArray(), folder);
     }
 
 
@@ -381,12 +318,12 @@ internal class Program
         var k = string.Join("", setting.Select(x => $"{x.Key}={x.Value}\r\n"));
         var h = Encoding.ASCII.GetBytes(k);
 
-        SettingTxtCrypt(ref h, true);
+        SettingTxtCrypt(ref h);
 
         return h;
     }
 
-    private static void SettingTxtCrypt(ref byte[] rawtxt, bool is_enc = false)
+    private static void SettingTxtCrypt(ref byte[] rawtxt)
     {
         var buffer = new byte[256];
         var key = 0x73B5DBFAu;

@@ -125,25 +125,22 @@ internal static class Program
         var orderedTitleContents = nus.DecryptedTitles
             .OrderBy(x => x.ParentTMD.Header.TitleID)
             .GroupBy(x => x.ParentTMD.Header.TitleID)
-            .Zip(Enumerable.Range(0x1001, nus.DecryptedTitles.Count).Select(x => (uint) x))
+            .Zip(Enumerable.Range(0x1000, nus.DecryptedTitles.Count).Select(x => (uint) x))
             .ToDictionary(x => x.First.Key, x => (x.Second, x.First));
 
-        var uidSysList = new Dictionary<ulong, RawUIDSysEntry>();
-
-        uidSysList.Add(0x100000002, new RawUIDSysEntry(0x100000002, 0x1000));
-        uidSysList.Add(0x100003132314a, new RawUIDSysEntry(0x100003132314a, 0x1001));
+        var uidSysTidList = new List<ulong>();
+        var uidSysTidGidMap = new Dictionary<ulong, ushort>();
 
         foreach (var content in orderedTitleContents)
         {
             Console.WriteLine($"----");
 
             var contents = content.Value.First.AsEnumerable();
-            var uid = content.Value.Second;
             ushort gid = 0;
             ulong tid = 0;
             string tidS = null, tidH = null, tidL = null;
             TitleMetadataContent lastContent = null;
-            
+
             foreach (var tmc in contents)
             {
                 lastContent = tmc;
@@ -162,33 +159,27 @@ internal static class Program
                     group: NodePerm.RW,
                     owner: NodePerm.RW);
 
-                Console.WriteLine($"Content ID {cidS} installed.");
+                Console.WriteLine($"Content {cidS} installed.");
             }
+
+            uidSysTidList.Add(tid);
+            uidSysTidGidMap[tid] = gid;
 
             var titleHighDir = $"/title/{tidH}";
             var titleLowDir = $"/title/{tidH}/{tidL}";
-            var dataDir = $"/title/{tidH}/{tidL}/data";
             var contentDir = $"/title/{tidH}/{tidL}/content";
 
             currentRoot.CreateDirectory(titleHighDir, owner: NodePerm.RW, group: NodePerm.None, other: NodePerm.Read);
             currentRoot.CreateDirectory(titleLowDir, owner: NodePerm.RW, group: NodePerm.RW, other: NodePerm.Read);
-            currentRoot.CreateDirectory(dataDir, owner: NodePerm.RW, group: NodePerm.None, other: NodePerm.None,
-                userID: uid, groupID: gid);
+
             currentRoot.CreateDirectory(contentDir, owner: NodePerm.RW, group: NodePerm.RW, other: NodePerm.None);
 
-            Console.WriteLine($"Installing Title ID {tidS} ({tidH}/{tidL})  UID {uid:X4} GID {gid:X4}");
-
-            Console.WriteLine($"Adding Title ID {tidS} to uid.sys");
-
-            if (!uidSysList.ContainsKey(tid))
-            {
-                uidSysList.Add(tid, new RawUIDSysEntry(tid, uid));
-            }
+            Console.WriteLine($"Installing Title {tidS} ({tidH}/{tidL})");
 
             var tik = lastContent!.DecodedTicket!;
 
-            Console.WriteLine($"Installing Ticket ID {BitConverter.ToUInt64(tik.TicketID):X16} " +
-                              $"for Title ID {tidS}");
+            Console.WriteLine($"Installing Ticket{BitConverter.ToUInt64(tik.TicketID):X16} " +
+                              $"for Title {tidS}");
 
             var ticketPath = $"/ticket/{tidH}/{tidL}.tik";
 
@@ -199,7 +190,7 @@ internal static class Program
 
             Console.WriteLine($"Installed Ticket to {ticketPath}");
 
-            Console.WriteLine($"Installing Title Metadata for Title ID {tidS}");
+            Console.WriteLine($"Installing Title Metadata for Title {tidS}");
 
             var tmdPath = $"/title/{tidH}/{tidL}/content/title.tmd";
 
@@ -213,22 +204,44 @@ internal static class Program
             Console.WriteLine($"Installed TMD to {tmdPath} byte size {tmdBlockSize}");
 
             currentRoot.GetNode(titleHighDir)?
-                .SetPermissions(NodePerm.RW, NodePerm.None, NodePerm.Read);
+                .SetAttributes(NodePerm.RW, NodePerm.None, NodePerm.Read);
             currentRoot.GetNode(titleLowDir)?
-                .SetPermissions(NodePerm.RW, NodePerm.RW, NodePerm.Read);
-            currentRoot.GetNode(dataDir)?
-                .SetPermissions(NodePerm.RW, NodePerm.None);
+                .SetAttributes(NodePerm.RW, NodePerm.RW, NodePerm.Read);
+
             currentRoot.GetNode(contentDir)?
-                .SetPermissions();
+                .SetAttributes();
         }
+
+        var nandTestTitle = 0x100003132314au;
+        uidSysTidList.Insert(1, nandTestTitle);
+        uidSysTidGidMap[nandTestTitle] = 0x4;
 
         await using var uidSysStream = new MemoryStream();
 
-        foreach (var entry in uidSysList.Select(x => x.Value))
+        foreach (var (tid, index) in uidSysTidList.Zip(Enumerable.Range(0, uidSysTidList.Count)))
         {
-            await uidSysStream.WriteAsync(entry.CastToArray());
+            var tidS = tid.ToString("X16").ToLowerInvariant();
+            var tidH = tidS[..8].ToLowerInvariant();
+            var tidL = tidS[8..].ToLowerInvariant();
+            var uid = (uint) (0x1000 + index);
+            var gid = uidSysTidGidMap[tid];
+
+            var dataDir = $"/title/{tidH}/{tidL}/data";
+
+
+            if (tid != nandTestTitle)
+            {
+                currentRoot.CreateDirectory(dataDir, owner: NodePerm.RW, group: NodePerm.None, other: NodePerm.None,
+                    userID: uid, groupID: gid);
+
+                Console.WriteLine($"Generated Data folder for Title {tidS}: UID {uid:X4} GID {gid:X4}");
+            }
+
+            await uidSysStream.WriteAsync(new RawUIDSysEntry(tid, uid).CastToArray());
+
+            Console.WriteLine($"Added Title {tidS} to uid.sys");
         }
-        
+
         currentRoot.CreateFile("/sys/uid.sys", uidSysStream.ToArray(),
             other: NodePerm.None,
             group: NodePerm.RW,

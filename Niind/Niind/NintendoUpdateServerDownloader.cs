@@ -25,7 +25,7 @@ namespace Niind
         private static object lockObj = new();
 
         private string CachePathName =
-            Path.Combine(Path.GetTempPath(), $"niind_nus_cache");
+            Path.Combine(Path.GetTempPath(), $"niind_nus_cache023423");
 
         public async Task GetUpdateAsync(KeyFile keyFile)
         {
@@ -40,24 +40,24 @@ namespace Niind
             await Constants.Version4_3U_Titles.ParallelForEachAsync(async titles =>
             {
                 var logOutput = "";
-                var titleID = $"{titles.TicketID:X16}";
+                var titleId = $"{titles.TicketID:X16}";
                 var tmdVersion = $"tmd.{titles.Version}";
 
-                var tikFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleID}")}.tik";
+                var tikFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleId}")}.tik";
 
                 RawTicket rawTicket;
                 byte[] downloadedTicket = null, downloadedTmd = null;
                 
                 if (File.Exists(tikFile))
                 {
-                    logOutput += $"Getting Title Ticket for {titleID}v{titles.Version} from cache folder.\n";
+                    logOutput += $"Getting Title Ticket for {titleId}v{titles.Version} from cache folder.\n";
                     downloadedTicket = await File.ReadAllBytesAsync(tikFile);
                     rawTicket = downloadedTicket.CastToStruct<RawTicket>();
                 }
                 else
                 {
-                    logOutput += $"Downloading Title Ticket for {titleID}v{titles.Version}\n";
-                    var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleID + "/cetk");
+                    logOutput += $"Downloading Title Ticket for {titleId}v{titles.Version}\n";
+                    var downloadCetkUri = new Uri(Constants.NUSBaseUrl + titleId + "/cetk");
                     downloadedTicket = GetUri(downloadCetkUri);
                     rawTicket = downloadedTicket.CastToStruct<RawTicket>();
                     
@@ -70,25 +70,25 @@ namespace Niind
                 if (rawTicket.CommonKeyIndex[0] != 0)
                 {
                     logOutput +=
-                        $"Expected Common Key Index to be 0 for {titleID}v{titles.Version} but got {rawTicket.CommonKeyIndex[0]}. Skipping." +
+                        $"Expected Common Key Index to be 0 for {titleId}v{titles.Version} but got {rawTicket.CommonKeyIndex[0]}. Skipping." +
                         "\n";
                     return;
                 }
 
-                var tmdFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleID}")}.tmd";
+                var tmdFile = $"{CachePathName}/{EncryptionHelper.GetSHA1String($"{titleId}")}.tmd";
                 TitleMetadata decodedTmd;
 
                 if (File.Exists(tmdFile))
                 {
-                    logOutput += $"Getting Title Metadata for {titleID}v{titles.Version} from cache folder.\n";
+                    logOutput += $"Getting Title Metadata for {titleId}v{titles.Version} from cache folder.\n";
                     downloadedTmd = await File.ReadAllBytesAsync(tmdFile);
                     decodedTmd = TitleMetadata.FromByteArray(downloadedTmd);
                 }
                 else
                 {
-                    logOutput += $"Downloading Title Metadata for {titleID}v{titles.Version}. \n";
+                    logOutput += $"Downloading Title Metadata for {titleId}v{titles.Version}. \n";
 
-                    var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleID + "/" + tmdVersion);
+                    var downloadTmdUri = new Uri(Constants.NUSBaseUrl + titleId + "/" + tmdVersion);
 
 
                     downloadedTmd = GetUri(downloadTmdUri);
@@ -124,7 +124,7 @@ namespace Niind
                     }
 
                     var contentFileName =
-                        $"{CachePathName}/{titleID}-{(contentDescriptor.ContentID):X8}.app";
+                        $"{CachePathName}/{titleId}-{(contentDescriptor.ContentID):X8}.app";
 
                     byte[] decryptedHash;
                     byte[] decryptedContent;
@@ -142,7 +142,7 @@ namespace Niind
                             $"Downloading Title Content {contentDescriptor.ContentID:X8} Index {contentDescriptor.Index} from NUS.\n";
 
                         var contentUri =
-                            new Uri(Constants.NUSBaseUrl + titleID + "/" + $"{contentDescriptor.ContentID:X8}");
+                            new Uri(Constants.NUSBaseUrl + titleId + "/" + $"{contentDescriptor.ContentID:X8}");
                         var encryptedContent = GetUri(contentUri);
 
                         EncryptionHelper.PadByteArrayToMultipleOf(ref encryptedContent, 0x40);
@@ -231,7 +231,7 @@ namespace Niind
         {
             private Task previousTask = Task.FromResult(true);
             private object key = new object();
-            static Semaphore sem = new Semaphore(1, 1);
+            static Semaphore sem = new Semaphore(1, 8);
 
             public Task QueueTask(Action action)
             {

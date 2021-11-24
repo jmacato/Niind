@@ -34,14 +34,18 @@ namespace Niind.Structures.FileSystem
             }
         }
 
-        public void SetPermissions(
+        public void SetAttributes(
             NodePerm owner = NodePerm.RW,
             NodePerm group = NodePerm.RW,
-            NodePerm other = NodePerm.None)
+            NodePerm other = NodePerm.None,
+            uint userId = 0,
+            ushort groupId = 0)
         {
             Other = other;
             Group = group;
             Owner = owner;
+            UserID = userId;
+            GroupID = groupId;
         }
     }
 }
